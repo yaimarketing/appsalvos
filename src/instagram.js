@@ -1,8 +1,9 @@
-// Cliente mínimo para a API web (não oficial) do Instagram, usando o cookie
-// de sessão do próprio usuário. O Instagram não oferece API pública para
-// itens salvos, então replicamos as chamadas que o site instagram.com faz.
+// Cliente mínimo para a API web (não oficial) do Instagram. O Instagram não
+// oferece API pública para itens salvos, então replicamos as chamadas que o
+// site instagram.com faz — inclusive o login — usando os cookies da conta.
 
-const BASE = "https://www.instagram.com/api/v1";
+const ORIGIN = "https://www.instagram.com";
+const BASE = `${ORIGIN}/api/v1`;
 // App ID público usado pelo cliente web do instagram.com.
 const WEB_APP_ID = "936619743392459";
 const USER_AGENT =
@@ -11,56 +12,173 @@ const USER_AGENT =
 export const ALL_SAVED_ID = "__all__";
 
 export class InstagramError extends Error {
-  constructor(message, status) {
+  constructor(message, status, extra = {}) {
     super(message);
     this.status = status;
+    Object.assign(this, extra);
   }
 }
 
-function headersFor(sessionId) {
-  return {
+// `auth` é um objeto { nomeDoCookie: valor } com os cookies da conta.
+function cookieHeader(auth) {
+  return Object.entries(auth)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
+
+function storeCookies(auth, res) {
+  for (const line of res.headers.getSetCookie()) {
+    const [pair] = line.split(";");
+    const eq = pair.indexOf("=");
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    if (!name) continue;
+    if (!value || value === '""' || /max-age=0/i.test(line)) delete auth[name];
+    else auth[name] = value;
+  }
+}
+
+function headersFor(auth, extra = {}) {
+  const headers = {
     "User-Agent": USER_AGENT,
     "X-IG-App-ID": WEB_APP_ID,
     "X-Requested-With": "XMLHttpRequest",
     Accept: "*/*",
-    Referer: "https://www.instagram.com/",
-    Cookie: `sessionid=${sessionId}`,
+    Origin: ORIGIN,
+    Referer: `${ORIGIN}/`,
+    Cookie: cookieHeader(auth),
+    ...extra,
   };
+  if (auth.csrftoken) headers["X-CSRFToken"] = auth.csrftoken;
+  return headers;
 }
 
-async function igGet(sessionId, path, params = {}) {
+async function parseJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new InstagramError("Resposta inesperada do Instagram (talvez peça verificação de login).", 502);
+  }
+}
+
+async function igGet(auth, path, params = {}) {
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);
   }
-  const res = await fetch(url, { headers: headersFor(sessionId), redirect: "manual" });
+  const res = await fetch(url, { headers: headersFor(auth), redirect: "manual" });
 
   if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
-    throw new InstagramError(
-      "Sessão do Instagram inválida ou expirada. Gere um novo sessionid e tente de novo.",
-      401,
-    );
+    throw new InstagramError("Sessão do Instagram expirada. Entre novamente.", 401);
   }
   if (res.status === 429) {
     throw new InstagramError("O Instagram limitou as requisições. Aguarde alguns minutos.", 429);
   }
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new InstagramError("Resposta inesperada do Instagram (talvez peça verificação de login).", 502);
-  }
+  const data = await parseJson(res);
   if (!res.ok || data.status === "fail") {
     if (data.message === "login_required" || data.require_login) {
-      throw new InstagramError("Sessão do Instagram inválida ou expirada.", 401);
+      throw new InstagramError("Sessão do Instagram expirada. Entre novamente.", 401);
     }
     throw new InstagramError(`Erro do Instagram: ${data.message || res.status}`, 502);
   }
   return data;
 }
 
-export function normalizeSessionId(raw) {
+async function igPostForm(auth, path, fields) {
+  const res = await fetch(BASE + path, {
+    method: "POST",
+    headers: headersFor(auth, {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Referer: `${ORIGIN}/accounts/login/`,
+    }),
+    body: new URLSearchParams(fields),
+    redirect: "manual",
+  });
+  storeCookies(auth, res);
+  if (res.status === 429) {
+    throw new InstagramError("Muitas tentativas de login. Aguarde alguns minutos.", 429);
+  }
+  return parseJson(res);
+}
+
+// ---------- Login ----------
+
+// Resultado: { auth, username } quando conectado, ou
+// { twoFactor: { identifier, username, method }, auth } quando o Instagram pede o código.
+export async function login(username, password) {
+  username = String(username || "").trim().replace(/^@/, "");
+  if (!username || !password) throw new InstagramError("Informe usuário e senha.", 400);
+
+  // 1. Abre a página de login para receber o cookie csrftoken.
+  const auth = {};
+  const page = await fetch(`${ORIGIN}/accounts/login/`, { headers: { "User-Agent": USER_AGENT } });
+  storeCookies(auth, page);
+  if (!auth.csrftoken) {
+    const html = await page.text();
+    const token = html.match(/"csrf_token":"([^"]+)"/)?.[1];
+    if (token) auth.csrftoken = token;
+  }
+  if (!auth.csrftoken) throw new InstagramError("Não foi possível iniciar o login no Instagram.", 502);
+
+  // 2. Envia as credenciais do mesmo jeito que o site (senha no formato "versão 0").
+  const timestamp = Math.floor(Date.now() / 1000);
+  const data = await igPostForm(auth, "/web/accounts/login/ajax/", {
+    username,
+    enc_password: `#PWD_INSTAGRAM_BROWSER:0:${timestamp}:${password}`,
+    queryParams: "{}",
+    optIntoOneTap: "false",
+    trustedDeviceRecords: "{}",
+  });
+  return handleLoginResponse(auth, data, username);
+}
+
+export async function verifyTwoFactor(pending, code) {
+  const verificationCode = String(code || "").replace(/\s/g, "");
+  if (!/^\d{4,8}$/.test(verificationCode)) throw new InstagramError("Digite o código numérico.", 400);
+  const auth = { ...pending.auth };
+  const data = await igPostForm(auth, "/web/accounts/login/ajax/two_factor/", {
+    identifier: pending.identifier,
+    username: pending.username,
+    verificationCode,
+    queryParams: "{}",
+    trust_signal: "true",
+  });
+  return handleLoginResponse(auth, data, pending.username);
+}
+
+function handleLoginResponse(auth, data, username) {
+  if (data.authenticated && auth.sessionid) {
+    return { auth, username };
+  }
+  if (data.two_factor_required && data.two_factor_info) {
+    const info = data.two_factor_info;
+    return {
+      auth,
+      twoFactor: {
+        identifier: info.two_factor_identifier,
+        username: info.username || username,
+        method: info.totp_two_factor_on ? "app autenticador" : "SMS",
+        phoneHint: info.obfuscated_phone_number || null,
+      },
+    };
+  }
+  if (data.message === "checkpoint_required" || data.checkpoint_url) {
+    throw new InstagramError(
+      "O Instagram pediu uma verificação de segurança. Abra o app do Instagram, confirme que foi você e tente de novo — ou use a opção \"Colar sessionid\".",
+      403,
+    );
+  }
+  if (data.user === false) throw new InstagramError("Usuário não encontrado.", 401);
+  if (data.authenticated === false) throw new InstagramError("Senha incorreta.", 401);
+  if (data.error_type === "invalid_verification_code" || /code/i.test(data.message || "")) {
+    throw new InstagramError("Código inválido ou expirado.", 401);
+  }
+  throw new InstagramError(`Login recusado pelo Instagram: ${data.message || "erro desconhecido"}`, 401);
+}
+
+// Alternativa ao login com senha: o usuário cola o cookie sessionid do navegador.
+export function authFromSessionId(raw) {
   let value = String(raw || "").trim();
   // Aceita o valor puro ou um trecho do header Cookie ("sessionid=...; ...").
   const match = value.match(/sessionid=([^;\s]+)/);
@@ -73,14 +191,33 @@ export function normalizeSessionId(raw) {
   if (!value || /[\s;]/.test(value)) {
     throw new InstagramError("Informe um sessionid válido.", 400);
   }
-  return encodeURIComponent(value);
+  const auth = { sessionid: encodeURIComponent(value) };
+  const userId = value.split(":")[0];
+  if (/^\d+$/.test(userId)) auth.ds_user_id = userId;
+  return auth;
 }
 
-export async function listCollections(sessionId) {
+export async function currentUsername(auth) {
+  const data = await igGet(auth, "/accounts/current_user/", { edit: "true" });
+  return data.user?.username || null;
+}
+
+// Encerra a sessão no Instagram (melhor esforço) para invalidar o cookie.
+export async function logout(auth) {
+  try {
+    await igPostForm(auth, "/web/accounts/logout/ajax/", { one_tap_app_login: "0", user_id: auth.ds_user_id || "" });
+  } catch {
+    // a sessão local é descartada de qualquer forma
+  }
+}
+
+// ---------- Salvos ----------
+
+export async function listCollections(auth) {
   const collections = [];
   let maxId;
   for (let page = 0; page < 20; page++) {
-    const data = await igGet(sessionId, "/collections/list/", {
+    const data = await igGet(auth, "/collections/list/", {
       collection_types: JSON.stringify(["ALL_MEDIA_AUTO_COLLECTION", "MEDIA"]),
       max_id: maxId,
     });
@@ -101,9 +238,9 @@ export async function listCollections(sessionId) {
   return collections;
 }
 
-export async function findCollection(sessionId, nameOrId) {
+export async function findCollection(auth, nameOrId) {
   const wanted = String(nameOrId || "").trim();
-  const collections = await listCollections(sessionId);
+  const collections = await listCollections(auth);
   const norm = (s) =>
     String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   const found =
@@ -116,13 +253,13 @@ export async function findCollection(sessionId, nameOrId) {
   return found;
 }
 
-export async function fetchCollectionPosts(sessionId, collectionId, { limit = 50, onProgress } = {}) {
+export async function fetchCollectionPosts(auth, collectionId, { limit = 50, onProgress } = {}) {
   const path =
     collectionId === ALL_SAVED_ID ? "/feed/saved/posts/" : `/feed/collection/${collectionId}/posts/`;
   const posts = [];
   let maxId;
   while (posts.length < limit) {
-    const data = await igGet(sessionId, path, { max_id: maxId });
+    const data = await igGet(auth, path, { max_id: maxId });
     for (const item of data.items || []) {
       const media = item.media || item;
       if (media?.id) posts.push(normalizeMedia(media));
@@ -148,6 +285,12 @@ function pickImage(versions) {
   return (sorted.find((c) => c.width >= 480) || sorted[sorted.length - 1]).url;
 }
 
+function pickVideo(versions) {
+  if (!versions?.length) return null;
+  // A menor versão basta: só o áudio é usado na transcrição.
+  return [...versions].sort((a, b) => (a.width || 0) - (b.width || 0))[0].url;
+}
+
 function normalizeMedia(m) {
   const isReel = m.media_type === 2 && (m.product_type === "clips" || m.product_type === "igtv");
   const carousel = m.carousel_media || [];
@@ -167,6 +310,8 @@ function normalizeMedia(m) {
     slides: carousel.length || null,
     takenAt: m.taken_at ? new Date(m.taken_at * 1000).toISOString().slice(0, 10) : null,
     images,
+    videoUrl: m.media_type === 2 ? pickVideo(m.video_versions) : null,
+    transcript: null,
   };
 }
 

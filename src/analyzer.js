@@ -1,8 +1,23 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-export const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+export const MODEL = process.env.CLAUDE_MODEL || "claude-haiku-4-5";
 
-const client = new Anthropic();
+// Cada pessoa usa a própria chave (conectada pela tela). Sem chave na sessão,
+// cai na ANTHROPIC_API_KEY do servidor, se houver.
+const serverClient = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+
+export function clientFor(apiKey) {
+  if (apiKey) return new Anthropic({ apiKey });
+  if (serverClient) return serverClient;
+  const err = new Error("Conecte sua conta Claude (chave da API) para usar a análise.");
+  err.status = 401;
+  throw err;
+}
+
+// Confere se a chave é válida consultando o modelo usado pelo app.
+export async function validateApiKey(apiKey) {
+  await new Anthropic({ apiKey }).models.retrieve(MODEL);
+}
 
 const ANALYSIS_SYSTEM = `Você é um estrategista sênior de conteúdo para Instagram.
 Recebe uma coleção de posts que uma pessoa salvou como referência e descobre, com precisão,
@@ -18,6 +33,8 @@ O que essa coleção tem em comum em 3–5 frases. Qual parece ser a intenção 
 ## Temas e assuntos recorrentes
 ## Formatos e estruturas
 Distribuição entre reels, carrosséis e imagens; como os conteúdos são estruturados (ex.: lista, antes/depois, storytelling, tutorial passo a passo).
+## Roteiro e falas dos reels
+Com base nas transcrições: como as falas abrem, ritmo, estrutura do roteiro, expressões e bordões recorrentes. Se não houver transcrições, diga isso em uma linha.
 ## Ganchos
 Padrões de abertura (primeira frase/primeiro slide) que prendem atenção, com exemplos.
 ## Tom de voz e linguagem
@@ -56,6 +73,7 @@ function postToText(post, index) {
   if (meta.length) lines.push(meta.join(" · "));
   if (post.url) lines.push(post.url);
   lines.push("", post.caption ? `Legenda:\n${post.caption}` : "(sem legenda)");
+  if (post.transcript) lines.push("", `Fala do vídeo (transcrição automática):\n${post.transcript}`);
   return lines.join("\n");
 }
 
@@ -83,13 +101,16 @@ export function buildAnalysisContent(posts, imagesByPost) {
 export function buildGenerationContent({ analysis, posts, format, quantity, brief }) {
   const captions = posts
     .slice(0, 30)
-    .map((p, i) => `#${i + 1} (${p.type}): ${p.caption.slice(0, 400).replace(/\s+/g, " ")}`)
+    .map((p, i) => {
+      const fala = p.transcript ? ` | Fala: ${p.transcript.slice(0, 400).replace(/\s+/g, " ")}` : "";
+      return `#${i + 1} (${p.type}): ${p.caption.slice(0, 400).replace(/\s+/g, " ")}${fala}`;
+    })
     .join("\n");
   const guide = FORMAT_GUIDES[format] || FORMAT_GUIDES.misto;
   return `# Análise da coleção de referência
 ${analysis}
 
-# Trechos das legendas originais (apenas referência de estilo — não copie)
+# Trechos das legendas e falas originais (apenas referência de estilo — não copie)
 ${captions || "(nenhuma)"}
 
 # Tarefa
@@ -107,16 +128,12 @@ Para cada conteúdo entregue:
 Separe cada conteúdo com uma linha horizontal (---).`;
 }
 
-// Faz uma chamada em streaming e repassa os eventos via callbacks.
-// Usa fallback automático do servidor caso o modelo recuse a requisição.
-export async function streamClaude({ system, content, onText, onReset, signal }) {
-  const stream = client.beta.messages.stream(
+// Faz uma chamada em streaming e repassa o texto via callback.
+export async function streamClaude({ apiKey, system, content, onText, signal }) {
+  const stream = clientFor(apiKey).messages.stream(
     {
       model: MODEL,
       max_tokens: 32000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "high" },
       system,
       messages: [{ role: "user", content }],
     },
@@ -124,10 +141,7 @@ export async function streamClaude({ system, content, onText, onReset, signal })
   );
 
   for await (const event of stream) {
-    if (event.type === "content_block_start" && event.content_block.type === "fallback") {
-      // Outro modelo assumiu a resposta: o texto parcial anterior deve ser descartado.
-      onReset?.();
-    } else if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
       onText(event.delta.text);
     }
   }
@@ -142,22 +156,22 @@ export async function streamClaude({ system, content, onText, onReset, signal })
   return message;
 }
 
-export function analyzeCollection({ posts, imagesByPost, onText, onReset, signal }) {
+export function analyzeCollection({ apiKey, posts, imagesByPost, onText, signal }) {
   return streamClaude({
+    apiKey,
     system: ANALYSIS_SYSTEM,
     content: buildAnalysisContent(posts, imagesByPost),
     onText,
-    onReset,
     signal,
   });
 }
 
-export function generateContent({ analysis, posts, format, quantity, brief, onText, onReset, signal }) {
+export function generateContent({ apiKey, analysis, posts, format, quantity, brief, onText, signal }) {
   return streamClaude({
+    apiKey,
     system: GENERATION_SYSTEM,
     content: buildGenerationContent({ analysis, posts, format, quantity, brief }),
     onText,
-    onReset,
     signal,
   });
 }

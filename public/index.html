@@ -8,44 +8,49 @@
 </head>
 <body>
   <header class="top">
-    <h1>AppSalvos</h1>
-    <p>Analise uma coleção de salvos do Instagram e gere conteúdos no mesmo estilo.</p>
+    <div>
+      <h1>AppSalvos</h1>
+      <p>Analise uma coleção de salvos do Instagram e gere conteúdos no mesmo estilo.</p>
+    </div>
+    <div class="accounts">
+      <div class="account" id="ig-account">
+        <span class="dot"></span>
+        <span class="account-label" id="ig-label">Instagram: desconectado</span>
+        <button type="button" class="secondary small" id="ig-login-btn">Entrar no Instagram</button>
+        <button type="button" class="secondary small" id="ig-logout-btn" hidden>Sair</button>
+      </div>
+      <div class="account" id="claude-account">
+        <span class="dot"></span>
+        <span class="account-label" id="claude-label">Claude: desconectado</span>
+        <button type="button" class="secondary small" id="claude-login-btn">Entrar com sua conta Claude</button>
+        <button type="button" class="secondary small" id="claude-logout-btn" hidden>Sair</button>
+      </div>
+    </div>
   </header>
 
   <main>
     <section class="card">
       <h2><span class="step">1</span> De onde vêm os salvos</h2>
       <div class="tabs" role="tablist">
-        <button type="button" class="tab active" data-source="instagram">Conectar Instagram</button>
+        <button type="button" class="tab active" data-source="instagram">Minha conta do Instagram</button>
         <button type="button" class="tab" data-source="manual">Colar manualmente</button>
       </div>
 
       <div id="source-instagram" class="source-panel">
-        <label for="sessionId">Cookie <code>sessionid</code> do Instagram</label>
-        <input id="sessionId" type="password" autocomplete="off" placeholder="Cole aqui o valor do cookie sessionid" />
-        <details class="help">
-          <summary>Como pegar o sessionid?</summary>
-          <ol>
-            <li>Entre no <a href="https://www.instagram.com" target="_blank" rel="noopener">instagram.com</a> pelo computador, na conta que tem os salvos.</li>
-            <li>Abra as ferramentas do desenvolvedor (F12) → aba <b>Application</b> (Chrome) ou <b>Armazenamento</b> (Firefox) → <b>Cookies</b> → <code>https://www.instagram.com</code>.</li>
-            <li>Copie o valor do cookie <code>sessionid</code> e cole acima.</li>
-          </ol>
-          <p class="warn">O sessionid dá acesso à conta: use apenas a sua, não compartilhe e saia da sessão no Instagram para invalidá-lo depois. O app não salva esse valor. O acesso automatizado pode violar os Termos de Uso do Instagram — use com moderação.</p>
-        </details>
-
+        <p id="ig-hint" class="hint">Entre na sua conta do Instagram (botão no topo) para escolher uma lista de salvos.</p>
         <div class="row">
           <div class="grow">
-            <label for="collection">Nome da lista de salvos</label>
+            <label for="collection">Lista de salvos</label>
             <input id="collection" list="collection-list" placeholder="Ex.: Referências carrossel" />
             <datalist id="collection-list"></datalist>
           </div>
-          <button type="button" id="load-collections" class="secondary">Listar minhas coleções</button>
+          <button type="button" id="load-collections" class="secondary">Atualizar coleções</button>
         </div>
       </div>
 
       <div id="source-manual" class="source-panel" hidden>
-        <label for="manualText">Cole os posts (link + legenda/descrição), separados por uma linha <code>---</code></label>
-        <textarea id="manualText" rows="10" placeholder="https://www.instagram.com/p/XXXX/&#10;Legenda do post...&#10;---&#10;https://www.instagram.com/reel/YYYY/&#10;Descrição do reel: o que é falado, texto na tela..."></textarea>
+        <label for="manualText">Cole os posts (link + legenda/descrição/fala), separados por uma linha <code>---</code></label>
+        <textarea id="manualText" rows="10" placeholder="https://www.instagram.com/p/XXXX/&#10;Legenda do post...&#10;---&#10;https://www.instagram.com/reel/YYYY/&#10;Fala do reel: o que é dito, texto na tela..."></textarea>
       </div>
 
       <div class="row options">
@@ -57,10 +62,16 @@
           <label for="maxImages">Máx. de imagens analisadas</label>
           <input id="maxImages" type="number" min="0" max="90" value="40" />
         </div>
+        <div>
+          <label for="maxTranscripts">Máx. de reels transcritos</label>
+          <input id="maxTranscripts" type="number" min="0" max="50" value="15" />
+        </div>
       </div>
+      <label class="check"><input type="checkbox" id="transcribe" checked /> Transcrever as falas dos reels (Whisper, roda no servidor, gratuito)</label>
 
       <button type="button" id="analyze" class="primary">Analisar coleção</button>
       <p id="status" class="status" aria-live="polite"></p>
+      <ul id="warnings" class="warnings"></ul>
     </section>
 
     <section id="posts-section" class="card" hidden>
@@ -114,6 +125,60 @@
       </div>
     </section>
   </main>
+
+  <dialog id="ig-dialog">
+    <form method="dialog" class="dialog-body" id="ig-form">
+      <h2>Entrar no Instagram</h2>
+      <div class="tabs">
+        <button type="button" class="tab active" data-ig-mode="password">Usuário e senha</button>
+        <button type="button" class="tab" data-ig-mode="session">Colar sessionid</button>
+      </div>
+
+      <div data-ig-panel="password">
+        <label for="ig-username">Usuário</label>
+        <input id="ig-username" autocomplete="username" placeholder="@seuusuario" />
+        <label for="ig-password">Senha</label>
+        <input id="ig-password" type="password" autocomplete="current-password" />
+      </div>
+
+      <div data-ig-panel="2fa" hidden>
+        <p id="ig-2fa-text">Digite o código de verificação.</p>
+        <label for="ig-code">Código</label>
+        <input id="ig-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+      </div>
+
+      <div data-ig-panel="session" hidden>
+        <label for="ig-sessionid">Cookie <code>sessionid</code></label>
+        <input id="ig-sessionid" type="password" autocomplete="off" />
+        <p class="hint">No computador, entre no instagram.com → F12 → <b>Application</b> → <b>Cookies</b> → copie o valor de <code>sessionid</code>. Use esta opção se o login com senha pedir verificação.</p>
+      </div>
+
+      <p class="warn">Sua senha vai direto do servidor deste app para o Instagram e não é salva. A conexão dura até você clicar em <b>Sair</b> (ou 12 h). O acesso automatizado pode violar os Termos de Uso do Instagram; use sua própria conta, com moderação.</p>
+      <p id="ig-error" class="status error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" data-close>Cancelar</button>
+        <button type="submit" class="primary" id="ig-submit">Entrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="claude-dialog">
+    <form method="dialog" class="dialog-body" id="claude-form">
+      <h2>Entrar com sua conta Claude</h2>
+      <ol class="hint">
+        <li>Abra o <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Console da Anthropic</a> e entre (ou crie) sua conta.</li>
+        <li>Clique em <b>Create Key</b>, copie a chave e cole abaixo.</li>
+      </ol>
+      <label for="claude-key">Chave da API</label>
+      <input id="claude-key" type="password" autocomplete="off" placeholder="sk-ant-..." />
+      <p class="hint">O uso é cobrado na sua conta da Anthropic (modelo <b id="model-name">Claude Haiku 4.5</b>). A chave fica só na memória do servidor durante a sessão.</p>
+      <p id="claude-error" class="status error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" data-close>Cancelar</button>
+        <button type="submit" class="primary" id="claude-submit">Conectar</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/vendor/marked/marked.umd.js"></script>
   <script src="/app.js"></script>

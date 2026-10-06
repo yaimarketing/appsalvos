@@ -31,7 +31,10 @@ body {
   color: var(--text);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-.top { max-width: 960px; margin: 0 auto; padding: 32px 16px 8px; }
+.top {
+  max-width: 960px; margin: 0 auto; padding: 32px 16px 8px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+}
 .top h1 { margin: 0; font-size: 28px; }
 .top p { margin: 4px 0 0; color: var(--muted); }
 main { max-width: 960px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
@@ -99,3 +102,31 @@ code { font-size: 0.9em; }
 .markdown table { border-collapse: collapse; display: block; overflow-x: auto; }
 .markdown th, .markdown td { border: 1px solid var(--border); padding: 6px 10px; }
 #output-wrap { margin-top: 20px; }
+
+.accounts { display: grid; gap: 8px; flex: 0 1 420px; }
+.account button { white-space: nowrap; }
+.account {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px 8px 6px 12px;
+  font-size: 14px;
+}
+.account .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.account.on .dot { background: var(--ok); }
+.account-label { flex: 1; min-width: 150px; }
+
+.hint { color: var(--muted); font-size: 14px; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 12px; }
+.check input { width: auto; }
+.warnings { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+.post .transcript { color: var(--muted); font-style: italic; }
+
+dialog {
+  border: 1px solid var(--border); border-radius: 14px; padding: 0;
+  background: var(--surface); color: var(--text); width: min(460px, calc(100vw - 32px));
+}
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.dialog-body { padding: 20px; }
+.dialog-body h2 { margin: 0 0 12px; font-size: 19px; }
+.dialog-body .warn { font-size: 13px; margin-top: 14px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions .primary { margin-top: 0; }
