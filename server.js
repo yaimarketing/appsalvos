@@ -4,18 +4,57 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as instagram from "./src/instagram.js";
 import { InstagramError } from "./src/instagram.js";
-import { Anthropic, MODEL, clientFor, analyzeCollection, generateContent, validateApiKey } from "./src/analyzer.js";
+import crypto from "node:crypto";
+import { analyzeCollection, generateContent } from "./src/analyzer.js";
 import { transcribeVideo, WHISPER_MODEL } from "./src/transcriber.js";
 import { sessionMiddleware } from "./src/session.js";
-import { OllamaError, OLLAMA_URL, listModels as listOllamaModels, ensureModel as ensureOllamaModel } from "./src/ollama.js";
+import * as ai from "./src/providers/index.js";
+import { ProviderError } from "./src/providers/index.js";
+import { MODEL as CLAUDE_MODEL } from "./src/providers/claude.js";
+import { OLLAMA_URL } from "./src/providers/ollama.js";
+
+// Senha de acesso ao app. Obrigatória quando o app está online (ex.: Hugging Face);
+// sem ela qualquer pessoa com o link usaria o app (e as chaves do servidor).
+const APP_PASSWORD = process.env.APP_PASSWORD || "";
+// No Hugging Face (variável SPACE_ID) o app fica público: sem senha, não libera nada.
+const PASSWORD_MISSING_ONLINE = Boolean(process.env.SPACE_ID) && !APP_PASSWORD;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Atrás do proxy HTTPS do provedor de hospedagem: confia no X-Forwarded-Proto
+// para marcar o cookie de sessão como Secure.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(here, "public")));
 app.use("/vendor/marked", express.static(path.join(here, "node_modules/marked/lib")));
 app.use("/api", sessionMiddleware);
+
+function safeEqual(a, b) {
+  const ha = crypto.createHash("sha256").update(String(a)).digest();
+  const hb = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+app.use("/api", (req, res, next) => {
+  if (!PASSWORD_MISSING_ONLINE || req.path === "/session") return next();
+  res.status(503).json({ error: "Configure o secret APP_PASSWORD no Space do Hugging Face para usar o app." });
+});
+
+app.post("/api/app-login", async (req, res) => {
+  if (!APP_PASSWORD || safeEqual(req.body?.password || "", APP_PASSWORD)) {
+    req.session.appAuthed = true;
+    return res.json(sessionInfo(req.session));
+  }
+  await new Promise((r) => setTimeout(r, 1000)); // freia tentativas de adivinhar a senha
+  res.status(401).json({ error: "Senha incorreta." });
+});
+
+// Tudo abaixo exige a senha do app (se configurada), exceto consultar a sessão.
+app.use("/api", (req, res, next) => {
+  if (!APP_PASSWORD || req.session.appAuthed || req.path === "/session") return next();
+  res.status(401).json({ error: "Digite a senha do app.", appLocked: true });
+});
 
 const clamp = (n, min, max, fallback) => {
   const v = Number.parseInt(n, 10);
@@ -23,12 +62,8 @@ const clamp = (n, min, max, fallback) => {
 };
 
 function errorMessage(err) {
-  if (err instanceof InstagramError || err instanceof OllamaError) return err.message;
-  if (err instanceof Anthropic.AuthenticationError) return "Chave da API do Claude inválida. Conecte sua conta novamente.";
-  if (err instanceof Anthropic.PermissionDeniedError) return "Essa chave da API não tem permissão para usar o modelo.";
-  if (err instanceof Anthropic.RateLimitError) return "Limite da API do Claude atingido. Tente novamente em instantes.";
-  if (err instanceof Anthropic.BadRequestError) return `Requisição rejeitada pela API do Claude: ${err.message}`;
-  if (err instanceof Anthropic.APIError) return `Erro da API do Claude (${err.status ?? "rede"}): ${err.message}`;
+  if (err instanceof InstagramError || err instanceof ProviderError) return err.message;
+  console.error(err);
   return err?.message || "Erro inesperado.";
 }
 
@@ -47,25 +82,20 @@ function forgetExpiredInstagram(req, err) {
 }
 
 function sessionInfo(session) {
+  const locked = Boolean(APP_PASSWORD) && !session.appAuthed;
   return {
+    app: { passwordRequired: Boolean(APP_PASSWORD), locked, passwordMissing: PASSWORD_MISSING_ONLINE },
     instagram: session.instagram ? { connected: true, username: session.instagram.username } : { connected: false },
-    claude: {
-      connected: Boolean(session.claudeApiKey),
-      serverKey: Boolean(process.env.ANTHROPIC_API_KEY),
-    },
-    model: MODEL,
+    providers: ai.providersInfo(session),
+    transcription: { groqAvailable: Boolean(ai.keyFor(session, "groq")) },
   };
 }
 
 // Define qual IA atende a requisição e confere se ela está pronta para uso.
-async function resolveAI(req, body) {
-  if (body.provider === "ollama") {
-    const model = String(body.ollamaModel || "");
-    await ensureOllamaModel(model);
-    return { provider: "ollama", model };
-  }
-  clientFor(req.session.claudeApiKey); // falha cedo se não houver conta Claude conectada
-  return { provider: "claude", apiKey: req.session.claudeApiKey };
+function resolveAI(req, body) {
+  const provider = String(body.provider || "claude");
+  ai.requireKey(req.session, provider); // falha cedo se faltar a chave
+  return { session: req.session, provider, model: body.model ? String(body.model) : "" };
 }
 
 // Respostas em NDJSON: um objeto JSON por linha, lido pelo navegador em streaming.
@@ -151,28 +181,23 @@ app.post("/api/instagram/logout", async (req, res) => {
   res.json(sessionInfo(req.session));
 });
 
-app.post("/api/claude/login", async (req, res) => {
+app.post("/api/keys/:provider", async (req, res) => {
   try {
-    const apiKey = String(req.body?.apiKey || "").trim();
-    if (!/^sk-ant-[\w-]+$/.test(apiKey)) {
-      return res.status(400).json({ error: "Cole uma chave da API válida (começa com sk-ant-)." });
-    }
-    await validateApiKey(apiKey);
-    req.session.claudeApiKey = apiKey;
+    await ai.connectKey(req.session, req.params.provider, req.body?.apiKey);
     res.json(sessionInfo(req.session));
   } catch (err) {
     sendError(res, err);
   }
 });
 
-app.post("/api/claude/logout", (req, res) => {
-  req.session.claudeApiKey = null;
+app.post("/api/keys/:provider/logout", (req, res) => {
+  if (req.session.keys) delete req.session.keys[req.params.provider];
   res.json(sessionInfo(req.session));
 });
 
-app.get("/api/ollama/models", async (_req, res) => {
+app.get("/api/models/:provider", async (req, res) => {
   try {
-    res.json({ url: OLLAMA_URL, models: await listOllamaModels() });
+    res.json({ models: await ai.listModels(req.session, req.params.provider) });
   } catch (err) {
     sendError(res, err);
   }
@@ -196,7 +221,9 @@ app.post("/api/analyze", async (req, res) => {
     const maxPosts = clamp(body.maxPosts, 1, 150, 40);
     const maxImages = clamp(body.maxImages, 0, 90, 40);
     const maxTranscripts = body.transcribe ? clamp(body.maxTranscripts, 0, 50, 15) : 0;
-    const ai = await resolveAI(req, body);
+    const aiChoice = resolveAI(req, body);
+    const engine = body.transcriber === "groq" ? "groq" : "local";
+    const groqKey = engine === "groq" ? ai.requireKey(req.session, "groq") : null;
     let posts;
 
     if (body.source === "manual") {
@@ -238,16 +265,16 @@ app.post("/api/analyze", async (req, res) => {
       });
     }
 
-    // Transcreve as falas dos vídeos localmente (Whisper), um por vez.
+    // Transcreve as falas dos vídeos (Whisper local ou na Groq), um por vez.
     const videos = posts.filter((p) => p.videoUrl).slice(0, maxTranscripts);
     for (const [i, post] of videos.entries()) {
       if (out.signal.aborted) return;
       out.send({
         type: "progress",
-        message: `Transcrevendo falas do reel ${i + 1} de ${videos.length}${i === 0 ? ` (na primeira vez o modelo ${WHISPER_MODEL} é baixado; pode demorar)` : ""}…`,
+        message: `Transcrevendo falas do reel ${i + 1} de ${videos.length}${i === 0 && engine === "local" ? ` (na primeira vez o modelo ${WHISPER_MODEL} é baixado; pode demorar)` : ""}…`,
       });
       try {
-        post.transcript = await transcribeVideo(post.videoUrl);
+        post.transcript = await transcribeVideo(post.videoUrl, { engine, groqKey });
       } catch (err) {
         out.send({ type: "warning", message: `Não foi possível transcrever o reel ${i + 1}: ${err.message}` });
         if (/Whisper/.test(err.message)) break;
@@ -258,12 +285,12 @@ app.post("/api/analyze", async (req, res) => {
       type: "posts",
       posts: posts.map(({ images, videoUrl, ...p }) => ({ ...p, thumbnail: images[0] || null })),
     });
-    const aiName = ai.provider === "ollama" ? `o Ollama (${ai.model})` : "o Claude";
-    out.send({ type: "progress", message: `Analisando ${posts.length} posts com ${aiName}…` });
+    const aiName = ai.providers[aiChoice.provider].info.label;
+    out.send({ type: "progress", message: `Analisando ${posts.length} posts com ${aiName}${aiChoice.model ? ` (${aiChoice.model})` : ""}…` });
 
     let analysis = "";
     await analyzeCollection({
-      ai,
+      ai: aiChoice,
       posts,
       imagesByPost,
       signal: out.signal,
@@ -293,10 +320,10 @@ app.post("/api/generate", async (req, res) => {
           transcript: p.transcript ? String(p.transcript) : null,
         }))
       : [];
-    const ai = await resolveAI(req, body);
+    const aiChoice = resolveAI(req, body);
     let text = "";
     await generateContent({
-      ai,
+      ai: aiChoice,
       analysis: String(body.analysis),
       posts,
       format: body.format,
@@ -318,8 +345,10 @@ app.post("/api/generate", async (req, res) => {
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
-  console.log(`AppSalvos rodando em http://localhost:${port} (Claude: ${MODEL}, Ollama: ${OLLAMA_URL})`);
+  console.log(`AppSalvos rodando em http://localhost:${port} (Claude: ${CLAUDE_MODEL}, Ollama: ${OLLAMA_URL})`);
+  if (!APP_PASSWORD) console.log("Sem APP_PASSWORD: o app abre sem senha (ok para uso local; defina antes de colocar online).");
   // Endereços na rede local, para abrir pelo celular conectado ao mesmo Wi-Fi.
+  if (process.env.SPACE_ID) return;
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const a of addrs || []) {
       if (a.family === "IPv4" && !a.internal) console.log(`No celular (mesmo Wi-Fi): http://${a.address}:${port}`);

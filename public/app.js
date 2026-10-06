@@ -118,7 +118,8 @@ $("#analyze").addEventListener("click", async () => {
     manualText: $("#manualText").value,
     maxPosts: $("#maxPosts").value,
     maxImages: $("#maxImages").value,
-    transcribe: $("#transcribe").checked,
+    transcribe: $("#transcriber").value !== "off",
+    transcriber: $("#transcriber").value,
     maxTranscripts: $("#maxTranscripts").value,
   };
   if (state.source === "instagram") {
@@ -290,16 +291,9 @@ function renderSession(info) {
   $("#ig-logout-btn").hidden = !ig.connected;
   $("#ig-hint").hidden = ig.connected;
 
-  const cl = info.claude;
-  const claudeReady = cl.connected || cl.serverKey;
-  $("#claude-account").classList.toggle("on", claudeReady);
-  $("#claude-label").textContent = cl.connected
-    ? "Claude: sua conta conectada"
-    : cl.serverKey
-      ? "Claude: usando a chave do servidor"
-      : "Claude: desconectado";
-  $("#claude-login-btn").hidden = cl.connected;
-  $("#claude-logout-btn").hidden = !cl.connected;
+  renderProviders();
+  if (info.app.passwordMissing) setStatus($("#status"), "Falta configurar o secret APP_PASSWORD no Space do Hugging Face.", "error");
+  else if (info.app.locked) openLock();
 
   if (ig.connected && !igWasConnected) loadCollections();
   if (!ig.connected) setCollectionOptions([], "Entre no Instagram para ver suas listas");
@@ -412,38 +406,7 @@ $("#ig-logout-btn").addEventListener("click", async () => {
   setStatus($("#status"), "Você saiu do Instagram.", "ok");
 });
 
-// Conta Claude: a pessoa cola a chave da API criada no Console da Anthropic.
-$("#claude-login-btn").addEventListener("click", () => {
-  $("#claude-key").value = "";
-  setStatus($("#claude-error"), "", "error");
-  $("#claude-dialog").showModal();
-  $("#claude-key").focus();
-});
-
-$("#claude-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const submit = $("#claude-submit");
-  submit.disabled = true;
-  setStatus($("#claude-error"), "Verificando a chave…", "");
-  try {
-    const info = await api("/api/claude/login", { apiKey: $("#claude-key").value });
-    $("#claude-key").value = "";
-    $("#claude-dialog").close();
-    renderSession(info);
-  } catch (err) {
-    setStatus($("#claude-error"), err.message, "error");
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-$("#claude-logout-btn").addEventListener("click", async () => {
-  renderSession(await api("/api/claude/logout", {}));
-});
-
-refreshSession();
-
-// ---------- Motor de IA: Claude ou Ollama ----------
+// ---------- Motor de IA: Claude, Groq, Gemini ou Ollama ----------
 
 const prefs = {
   get(key) {
@@ -462,57 +425,220 @@ const prefs = {
   },
 };
 
+const PROVIDER_TEXT = {
+  claude: {
+    option: "Claude (pago)",
+    steps: [
+      'Abra o <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Console da Anthropic</a> e entre (ou crie) sua conta.',
+      "Clique em <b>Create Key</b>, copie a chave (começa com <code>sk-ant-</code>) e cole abaixo.",
+    ],
+    cost: "O uso é cobrado na sua conta da Anthropic (Claude Haiku 4.5, o modelo mais barato do Claude).",
+  },
+  groq: {
+    option: "Groq (grátis)",
+    steps: [
+      'Abra o <a href="https://console.groq.com/keys" target="_blank" rel="noopener">GroqCloud</a> e entre com Google ou e-mail.',
+      "Clique em <b>Create API Key</b>, copie a chave (começa com <code>gsk_</code>) e cole abaixo.",
+    ],
+    cost: "Plano gratuito com limite por minuto e por dia. Analisa até 5 imagens por vez. A mesma chave libera a transcrição rápida dos reels.",
+  },
+  gemini: {
+    option: "Gemini (grátis)",
+    steps: [
+      'Abra o <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> e entre com sua conta Google.',
+      "Clique em <b>Criar chave de API</b>, copie a chave e cole abaixo.",
+    ],
+    cost: "Plano gratuito com limite diário. No plano gratuito o Google pode usar os dados enviados para melhorar os produtos dele.",
+  },
+  ollama: { option: "Ollama (grátis, local)" },
+};
+
+const currentProvider = () => $("#provider").value;
+
+function setupProviderSelect(providers) {
+  const select = $("#provider");
+  if (select.options.length) return;
+  for (const id of Object.keys(providers)) select.add(new Option(PROVIDER_TEXT[id]?.option || providers[id].label, id));
+  const saved = prefs.get("provider");
+  if (saved && providers[saved]) select.value = saved;
+}
+
+function providerReady(id = currentProvider()) {
+  const p = state.session?.providers?.[id];
+  return Boolean(p && (!p.needsKey || p.connected || p.serverKey));
+}
+
+function renderProviders() {
+  const providers = state.session.providers;
+  setupProviderSelect(providers);
+  const id = currentProvider();
+  const p = providers[id];
+  const ready = providerReady(id);
+  $("#ai-account").classList.toggle("on", ready && (id !== "ollama" || $("#model").options.length > 0));
+  $("#ai-label").textContent = !p.needsKey
+    ? `${p.label}: roda no computador do servidor`
+    : p.connected
+      ? `${p.label}: sua chave conectada`
+      : p.serverKey
+        ? `${p.label}: usando a chave do servidor`
+        : `${p.label}: desconectado`;
+  $("#key-login-btn").hidden = !p.needsKey || p.connected;
+  $("#key-logout-btn").hidden = !p.connected;
+  $("#models-refresh").hidden = id === "claude";
+  // Transcrição pela Groq só aparece quando há chave da Groq.
+  const groqOpt = $("#transcriber").querySelector('option[value="groq"]');
+  groqOpt.disabled = !state.session.transcription.groqAvailable;
+  if (groqOpt.disabled && $("#transcriber").value === "groq") $("#transcriber").value = "local";
+}
+
+let modelsFor = null;
+
+async function loadModels(force = false) {
+  const id = currentProvider();
+  if (!force && modelsFor === id) return;
+  modelsFor = id;
+  const select = $("#model");
+  const note = $("#ai-note");
+  select.innerHTML = "";
+  if (!providerReady(id)) {
+    note.textContent = "Conecte a chave para escolher o modelo.";
+    renderProviders();
+    return;
+  }
+  note.textContent = "Carregando modelos…";
+  try {
+    const { models } = await api(`/api/models/${id}`);
+    if (modelsFor !== id) return;
+    for (const m of models) select.add(new Option(`${m.label}${m.vision ? " · lê imagens" : ""}`, m.id));
+    const saved = prefs.get(`model:${id}`);
+    if (saved && models.some((m) => m.id === saved)) select.value = saved;
+    note.textContent = models.length
+      ? id === "ollama"
+        ? "Modelos que não leem imagens analisam só textos e falas."
+        : ""
+      : id === "ollama"
+        ? "Nenhum modelo instalado. No computador do servidor rode: ollama pull qwen2.5vl"
+        : "Nenhum modelo disponível.";
+  } catch (err) {
+    if (modelsFor === id) note.textContent = err.message;
+  }
+  renderProviders();
+}
+
 function aiParams() {
-  return { provider: $("#provider").value, ollamaModel: $("#ollama-model").value };
+  return { provider: currentProvider(), model: $("#model").value };
 }
 
 function aiReady(statusEl) {
-  if ($("#provider").value === "ollama") {
-    if (!$("#ollama-model").value) {
-      setStatus(statusEl, "Nenhum modelo do Ollama disponível. Veja o aviso no topo da tela.", "error");
-      return false;
-    }
-    return true;
+  const id = currentProvider();
+  if (!providerReady(id)) {
+    openKeyDialog();
+    return false;
   }
-  const claude = state.session?.claude;
-  if (claude && !claude.connected && !claude.serverKey) {
-    $("#claude-login-btn").click();
+  if (id === "ollama" && !$("#model").value) {
+    setStatus(statusEl, "Nenhum modelo do Ollama disponível. Veja o aviso no topo da tela.", "error");
     return false;
   }
   return true;
 }
 
-async function loadOllamaModels() {
-  const select = $("#ollama-model");
-  const note = $("#ollama-status");
-  note.textContent = "Procurando modelos…";
+function openKeyDialog() {
+  const id = currentProvider();
+  const text = PROVIDER_TEXT[id];
+  if (!text?.steps) return;
+  $("#key-title").textContent = `Conectar ${state.session.providers[id].label}`;
+  $("#key-steps").innerHTML = text.steps.map((s) => `<li>${s}</li>`).join("");
+  $("#key-cost").textContent = text.cost + " A chave fica só na memória do servidor durante a sessão.";
+  $("#key-input").value = "";
+  setStatus($("#key-error"), "", "error");
+  $("#key-dialog").showModal();
+  $("#key-input").focus();
+}
+
+$("#key-login-btn").addEventListener("click", openKeyDialog);
+
+$("#key-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const submit = $("#key-submit");
+  submit.disabled = true;
+  setStatus($("#key-error"), "Verificando a chave…", "");
   try {
-    const data = await api("/api/ollama/models");
-    select.innerHTML = "";
-    for (const m of data.models) select.add(new Option(`${m.name}${m.vision ? " · lê imagens" : ""}`, m.name));
-    const saved = prefs.get("ollamaModel");
-    if (saved && data.models.some((m) => m.name === saved)) select.value = saved;
-    $("#ollama-account").classList.toggle("on", data.models.length > 0);
-    note.textContent = data.models.length
-      ? "Roda no computador do servidor. Modelos que não leem imagens analisam só textos e falas."
-      : 'Nenhum modelo instalado. No computador do servidor rode: ollama pull qwen2.5vl';
+    const info = await api(`/api/keys/${currentProvider()}`, { apiKey: $("#key-input").value });
+    $("#key-input").value = "";
+    $("#key-dialog").close();
+    renderSession(info);
+    loadModels(true);
   } catch (err) {
-    select.innerHTML = "";
-    $("#ollama-account").classList.remove("on");
-    note.textContent = err.message;
+    setStatus($("#key-error"), err.message, "error");
+  } finally {
+    submit.disabled = false;
   }
+});
+
+$("#key-logout-btn").addEventListener("click", async () => {
+  renderSession(await api(`/api/keys/${currentProvider()}/logout`, {}));
+  loadModels(true);
+});
+
+$("#provider").addEventListener("change", () => {
+  prefs.set("provider", currentProvider());
+  renderProviders();
+  loadModels();
+});
+$("#model").addEventListener("change", () => prefs.set(`model:${currentProvider()}`, $("#model").value));
+$("#models-refresh").addEventListener("click", () => loadModels(true));
+
+// ---------- Senha de acesso ao app ----------
+
+function openLock() {
+  if (!$("#lock-dialog").open) $("#lock-dialog").showModal();
+  $("#lock-password").focus();
 }
 
-function applyProvider() {
-  const ollama = $("#provider").value === "ollama";
-  $("#ollama-account").hidden = !ollama;
-  $("#claude-account").hidden = ollama;
-  prefs.set("provider", $("#provider").value);
-  if (ollama && !$("#ollama-model").options.length) loadOllamaModels();
+$("#lock-dialog").addEventListener("cancel", (e) => e.preventDefault()); // não fecha com Esc
+
+$("#lock-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setStatus($("#lock-error"), "Verificando…", "");
+  try {
+    const info = await api("/api/app-login", { password: $("#lock-password").value });
+    $("#lock-password").value = "";
+    $("#lock-dialog").close();
+    renderSession(info);
+    loadModels(true);
+  } catch (err) {
+    setStatus($("#lock-error"), err.message, "error");
+  }
+});
+
+// Dentro da página do Hugging Face o app roda num iframe e o navegador bloqueia
+// o cookie de sessão; avisa para abrir o endereço direto.
+if (window.top !== window.self) {
+  $("#iframe-banner").hidden = false;
+  $("#iframe-link").href = location.href;
 }
 
-$("#provider").addEventListener("change", applyProvider);
-$("#ollama-model").addEventListener("change", () => prefs.set("ollamaModel", $("#ollama-model").value));
-$("#ollama-refresh").addEventListener("click", loadOllamaModels);
-if (prefs.get("provider") === "ollama") $("#provider").value = "ollama";
-applyProvider();
+// ---------- Aviso de conta secundária (antes de usar o app) ----------
+
+function showWarning() {
+  return new Promise((resolve) => {
+    if (prefs.get("secondaryAccountAck") === "1") return resolve();
+    const dialog = $("#warning-dialog");
+    dialog.addEventListener("cancel", (e) => e.preventDefault()); // não fecha com Esc
+    $("#warning-ack").addEventListener("change", (e) => ($("#warning-continue").disabled = !e.target.checked));
+    $("#warning-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!$("#warning-ack").checked) return;
+      if ($("#warning-remember").checked) prefs.set("secondaryAccountAck", "1");
+      dialog.close();
+      resolve();
+    });
+    dialog.showModal();
+  });
+}
+
+showWarning()
+  .then(refreshSession)
+  .then(() => {
+    if (state.session && !state.session.app.locked) loadModels(true);
+  });

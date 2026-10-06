@@ -1,16 +1,21 @@
 // Cliente do Ollama (https://ollama.com): modelos de IA abertos rodando de
 // graça no computador onde este servidor está. Usa a API HTTP local do Ollama.
 
+import { ProviderError, readLines, TRUNCATED_NOTE } from "./common.js";
+
 const OLLAMA_URL = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
 // Contexto maior que o padrão do Ollama: a coleção inteira precisa caber no prompt.
 const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 32768;
 
-export class OllamaError extends Error {
-  constructor(message, status = 502) {
-    super(message);
-    this.status = status;
-  }
-}
+export const info = {
+  id: "ollama",
+  label: "Ollama",
+  of: "do Ollama",
+  paid: false,
+  needsKey: false,
+  // Online (ex.: Hugging Face) o Ollama só existe se OLLAMA_URL apontar para um servidor com ele.
+  enabled: process.env.OLLAMA_ENABLED !== "false",
+};
 
 async function ollamaFetch(path, options = {}) {
   let res;
@@ -18,14 +23,14 @@ async function ollamaFetch(path, options = {}) {
     res = await fetch(OLLAMA_URL + path, options);
   } catch (err) {
     if (err.name === "AbortError") throw err;
-    throw new OllamaError(
+    throw new ProviderError(
       `Ollama não encontrado em ${OLLAMA_URL}. Instale em ollama.com, abra o programa e baixe um modelo (ex.: "ollama pull qwen2.5vl").`,
       503,
     );
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new OllamaError(`Erro do Ollama: ${data.error || res.status}`, res.status === 404 ? 404 : 502);
+    throw new ProviderError(`Erro do Ollama: ${data.error || res.status}`, res.status === 404 ? 404 : 502);
   }
   return res;
 }
@@ -54,14 +59,15 @@ export async function listModels() {
   const withVision = await Promise.all(
     models.map(async (name) => ({ name, vision: await supportsVision(name).catch(() => false) })),
   );
-  return withVision.filter((m) => !/embed/i.test(m.name));
+  return withVision
+    .filter((m) => !/embed/i.test(m.name))
+    .map((m) => ({ id: m.name, label: m.name, vision: m.vision }));
 }
 
 export async function ensureModel(model) {
-  if (!model) throw new OllamaError("Escolha um modelo do Ollama.", 400);
   const models = await listModels();
-  if (!models.some((m) => m.name === model)) {
-    throw new OllamaError(`O modelo "${model}" não está instalado no Ollama. Rode: ollama pull ${model}`, 404);
+  if (!models.some((m) => m.id === model)) {
+    throw new ProviderError(`O modelo "${model}" não está instalado no Ollama. Rode: ollama pull ${model}`, 404);
   }
 }
 
@@ -81,7 +87,8 @@ function toOllamaMessage(content, vision) {
   return { role: "user", content: parts.join("\n\n"), ...(images.length ? { images } : {}) };
 }
 
-export async function streamOllama({ model, system, content, onText, signal }) {
+export async function stream({ model, system, content, onText, signal }) {
+  await ensureModel(model);
   const vision = await supportsVision(model);
   const res = await ollamaFetch("/api/chat", {
     method: "POST",
@@ -95,32 +102,15 @@ export async function streamOllama({ model, system, content, onText, signal }) {
     }),
   });
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let last = null;
-  const handle = (line) => {
+  await readLines(res.body, (line) => {
     if (!line.trim()) return;
     const data = JSON.parse(line);
-    if (data.error) throw new OllamaError(`Erro do Ollama: ${data.error}`);
+    if (data.error) throw new ProviderError(`Erro do Ollama: ${data.error}`);
     if (data.message?.content) onText(data.message.content);
     if (data.done) last = data;
-  };
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let nl;
-    while ((nl = buffer.indexOf("\n")) >= 0) {
-      handle(buffer.slice(0, nl));
-      buffer = buffer.slice(nl + 1);
-    }
-  }
-  handle(buffer);
-  if (last?.done_reason === "length") {
-    onText("\n\n> ⚠️ Resposta interrompida pelo limite de tamanho. Tente pedir menos conteúdos ou analisar menos posts.");
-  }
-  return { vision };
+  });
+  if (last?.done_reason === "length") onText(TRUNCATED_NOTE);
 }
 
 export { OLLAMA_URL };

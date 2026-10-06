@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <p id="iframe-banner" class="banner" hidden>Para o login funcionar, <a id="iframe-link" href="/" target="_blank" rel="noopener">abra o app em tela cheia</a>.</p>
   <header class="top">
     <div>
       <h1>AppSalvos</h1>
@@ -15,28 +16,24 @@
     <div class="accounts">
       <div class="account ai-picker">
         <label for="provider" class="account-label">Motor de IA</label>
-        <select id="provider">
-          <option value="claude">Claude (pago)</option>
-          <option value="ollama">Ollama (gratuito, local)</option>
-        </select>
+        <select id="provider"></select>
       </div>
-      <div class="account" id="ollama-account" hidden>
+      <div class="account" id="ai-account">
         <span class="dot"></span>
-        <select id="ollama-model" aria-label="Modelo do Ollama"></select>
-        <button type="button" class="secondary small" id="ollama-refresh">Atualizar</button>
-        <p id="ollama-status" class="account-note"></p>
+        <span class="account-label" id="ai-label"></span>
+        <button type="button" class="secondary small" id="key-login-btn">Conectar chave</button>
+        <button type="button" class="secondary small" id="key-logout-btn" hidden>Sair</button>
+        <div class="model-row">
+          <select id="model" aria-label="Modelo"></select>
+          <button type="button" class="secondary small" id="models-refresh">Atualizar</button>
+        </div>
+        <p id="ai-note" class="account-note"></p>
       </div>
       <div class="account" id="ig-account">
         <span class="dot"></span>
         <span class="account-label" id="ig-label">Instagram: desconectado</span>
         <button type="button" class="secondary small" id="ig-login-btn">Entrar no Instagram</button>
         <button type="button" class="secondary small" id="ig-logout-btn" hidden>Sair</button>
-      </div>
-      <div class="account" id="claude-account">
-        <span class="dot"></span>
-        <span class="account-label" id="claude-label">Claude: desconectado</span>
-        <button type="button" class="secondary small" id="claude-login-btn">Entrar com sua conta Claude</button>
-        <button type="button" class="secondary small" id="claude-logout-btn" hidden>Sair</button>
       </div>
     </div>
   </header>
@@ -81,7 +78,12 @@
           <input id="maxTranscripts" type="number" min="0" max="50" value="15" />
         </div>
       </div>
-      <label class="check"><input type="checkbox" id="transcribe" checked /> Transcrever as falas dos reels (Whisper, roda no servidor, gratuito)</label>
+      <label for="transcriber">Transcrição das falas dos reels</label>
+      <select id="transcriber">
+        <option value="local">Whisper no servidor (grátis, mais lento)</option>
+        <option value="groq">Groq (grátis, rápido — precisa da chave da Groq)</option>
+        <option value="off">Não transcrever</option>
+      </select>
 
       <button type="button" id="analyze" class="primary">Analisar coleção</button>
       <p id="status" class="status" aria-live="polite"></p>
@@ -167,7 +169,7 @@
         <p class="hint">No computador, entre no instagram.com → F12 → <b>Application</b> → <b>Cookies</b> → copie o valor de <code>sessionid</code>. Use esta opção se o login com senha pedir verificação.</p>
       </div>
 
-      <p class="warn">Sua senha vai direto do servidor deste app para o Instagram e não é salva. A conexão dura até você clicar em <b>Sair</b> (ou 12 h). O acesso automatizado pode violar os Termos de Uso do Instagram; use sua própria conta, com moderação.</p>
+      <p class="warn"><b>Use uma conta secundária</b>, nunca a principal nem a de clientes: o Instagram pode bloquear contas usadas em acesso automatizado. A senha vai do servidor deste app direto para o Instagram e não é salva; a conexão dura até você clicar em <b>Sair</b> (ou 12 h).</p>
       <p id="ig-error" class="status error"></p>
       <div class="dialog-actions">
         <button type="button" class="secondary" data-close>Cancelar</button>
@@ -176,20 +178,49 @@
     </form>
   </dialog>
 
-  <dialog id="claude-dialog">
-    <form method="dialog" class="dialog-body" id="claude-form">
-      <h2>Entrar com sua conta Claude</h2>
-      <ol class="hint">
-        <li>Abra o <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Console da Anthropic</a> e entre (ou crie) sua conta.</li>
-        <li>Clique em <b>Create Key</b>, copie a chave e cole abaixo.</li>
-      </ol>
-      <label for="claude-key">Chave da API</label>
-      <input id="claude-key" type="password" autocomplete="off" placeholder="sk-ant-..." />
-      <p class="hint">O uso é cobrado na sua conta da Anthropic (modelo <b id="model-name">Claude Haiku 4.5</b>). A chave fica só na memória do servidor durante a sessão.</p>
-      <p id="claude-error" class="status error"></p>
+  <dialog id="key-dialog">
+    <form method="dialog" class="dialog-body" id="key-form">
+      <h2 id="key-title">Conectar chave</h2>
+      <ol class="hint" id="key-steps"></ol>
+      <label for="key-input">Chave da API</label>
+      <input id="key-input" type="password" autocomplete="off" />
+      <p class="hint" id="key-cost"></p>
+      <p id="key-error" class="status error"></p>
       <div class="dialog-actions">
         <button type="button" class="secondary" data-close>Cancelar</button>
-        <button type="submit" class="primary" id="claude-submit">Conectar</button>
+        <button type="submit" class="primary" id="key-submit">Conectar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="warning-dialog">
+    <form method="dialog" class="dialog-body" id="warning-form">
+      <h2>⚠️ Use uma conta secundária do Instagram</h2>
+      <p>Este app acessa o Instagram de forma <b>não oficial e automatizada</b>. O Instagram pode bloquear ou banir a conta usada, e uma punição pode chegar às contas ligadas a ela.</p>
+      <ul class="warning-list">
+        <li><b>Crie uma conta só para o app</b>, com e-mail e telefone diferentes das suas contas principais.</li>
+        <li><b>Não adicione essa conta à Central de Contas</b> das suas contas principais.</li>
+        <li><b>Nunca entre com a sua conta principal nem com contas de clientes.</b></li>
+        <li>Salve nessa conta secundária, em listas, os posts que você quer usar como referência.</li>
+        <li>Analise poucos posts por vez e evite rodar várias análises seguidas.</li>
+      </ul>
+      <label class="check"><input type="checkbox" id="warning-ack" /> Entendi os riscos e vou usar uma conta secundária</label>
+      <label class="check"><input type="checkbox" id="warning-remember" /> Não mostrar de novo neste aparelho</label>
+      <div class="dialog-actions">
+        <button type="submit" class="primary" id="warning-continue" disabled>Continuar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="lock-dialog">
+    <form method="dialog" class="dialog-body" id="lock-form">
+      <h2>AppSalvos</h2>
+      <p class="hint">Digite a senha de acesso do app.</p>
+      <label for="lock-password">Senha</label>
+      <input id="lock-password" type="password" autocomplete="current-password" />
+      <p id="lock-error" class="status error"></p>
+      <div class="dialog-actions">
+        <button type="submit" class="primary">Entrar</button>
       </div>
     </form>
   </dialog>

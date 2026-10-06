@@ -1,96 +1,100 @@
+---
+title: AppSalvos
+emoji: 📌
+colorFrom: pink
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # AppSalvos
 
-App web que entra na sua conta do Instagram, abre a **lista de salvos (coleção)** que você escolher,
-analisa todos os posts dessa lista (legendas, métricas, imagens/capas e **as falas dos reels**) com IA
-e **gera conteúdos novos no mesmo estilo**: carrosséis, roteiros de reel, posts estáticos ou legendas.
+App web que entra numa conta do Instagram, abre a **lista de salvos (coleção)** escolhida, analisa todos
+os posts (legendas, métricas, imagens/capas e **as falas dos reels**) com IA e **gera conteúdos novos no
+mesmo estilo**: carrosséis, roteiros de reel, posts estáticos ou legendas. Funciona no computador e no celular.
 
-Você escolhe o motor de IA na tela:
+> ⚠️ **Use uma conta secundária do Instagram.** O app acessa o Instagram de forma não oficial e
+> automatizada; o Instagram pode bloquear ou banir a conta usada. Nunca entre com a conta principal nem
+> com contas de clientes. O app mostra esse aviso antes de ser usado.
 
-| | Claude (pago) | Ollama (gratuito) |
-|---|---|---|
-| Onde roda | API da Anthropic (Claude Haiku 4.5) | No computador onde o app está rodando |
-| Custo | Cobrado na sua conta da Anthropic | Zero |
-| Qualidade em português | Alta | Boa a razoável, depende do modelo |
-| Requisitos | Chave da API | 8–16 GB de RAM (placa de vídeo ajuda) |
+## Motores de IA
 
-Funciona no computador e no celular.
+| | Claude | Groq | Gemini | Ollama |
+|---|---|---|---|---|
+| Custo | Pago (Haiku 4.5) | Grátis com limites | Grátis com limites | Grátis |
+| Onde roda | API da Anthropic | API da Groq | API do Google | No computador do app (não disponível online) |
+| Lê imagens | Sim | Sim, até 5 por vez (Llama 4) | Sim | Depende do modelo |
+| Chave | [console.anthropic.com](https://console.anthropic.com/settings/keys) | [console.groq.com](https://console.groq.com/keys) | [aistudio.google.com](https://aistudio.google.com/apikey) | — |
+
+A transcrição das falas dos reels pode ser feita pelo **Whisper no servidor** (grátis, mais lento) ou pela
+**Groq** (grátis, rápida, usa a mesma chave da Groq).
+
+No plano gratuito do Gemini o Google pode usar os dados enviados para melhorar os produtos dele.
 
 ## Como funciona
 
-1. **Contas e motor de IA** (barra no topo da tela)
-   - **Motor de IA:** escolha *Claude (pago)* ou *Ollama (gratuito, local)* e, no Ollama, o modelo instalado.
-   - **Entrar no Instagram:** com usuário e senha (inclui o código de verificação em duas etapas) ou
-     colando o cookie `sessionid`. **Sair** encerra a sessão no Instagram e no app.
-   - **Entrar com sua conta Claude:** cole uma chave da API criada no
-     [Console da Anthropic](https://console.anthropic.com/settings/keys). O uso é cobrado na sua conta.
-     **Sair** remove a chave da sessão.
-2. **Fonte dos salvos:** escolha uma coleção da sua conta ou cole os posts manualmente (link + legenda/fala, separados por `---`).
-3. **Transcrição dos reels:** o áudio de cada reel é transcrito **no próprio servidor** com o Whisper
-   (open source, gratuito, sem enviar o áudio para nenhum serviço pago).
-4. **Análise:** o Claude recebe legendas, transcrições, métricas e imagens e devolve um relatório com temas,
-   formatos, ganchos, roteiro e falas dos reels, tom de voz, identidade visual, CTAs e *fórmulas replicáveis*.
-5. **Geração:** escolha formato, quantidade e descreva quem vai publicar. O Claude cria conteúdos originais
-   aplicando as fórmulas da análise.
+1. **Aviso e senha:** ao abrir, o app mostra o aviso de conta secundária e, se configurada, pede a senha de acesso.
+2. **Motor de IA** (topo da tela): escolha Claude, Groq, Gemini ou Ollama, conecte a chave e escolha o modelo.
+3. **Instagram:** entre com usuário e senha (com código de verificação em duas etapas) ou colando o cookie `sessionid`.
+4. **Lista de salvos:** escolha uma coleção da conta ou cole os posts manualmente.
+5. **Análise:** relatório com temas, formatos, ganchos, roteiro e falas dos reels, tom de voz, identidade visual,
+   CTAs e *fórmulas replicáveis*.
+6. **Geração:** escolha formato, quantidade e descreva quem vai publicar.
 
-## Rodando
+## Publicar online (Hugging Face Spaces, grátis)
+
+O repositório já vem pronto: `Dockerfile` para o Space e `.github/workflows/deploy-huggingface.yml`, que
+publica automaticamente a cada atualização da branch `main`.
+
+1. **Hugging Face:** crie uma conta em [huggingface.co](https://huggingface.co/join) e um Space em
+   *New Space* → SDK **Docker** → template **Blank** → hardware **CPU basic (free)**.
+2. **Secrets do Space** (*Settings → Variables and secrets → New secret*):
+   - `APP_PASSWORD` — senha de acesso ao app (**obrigatória**; sem ela o app não libera nada online).
+   - Opcionais: `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` — evitam colar a chave a cada acesso.
+3. **Token:** em [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), crie um token do tipo **Write**.
+4. **GitHub** (*Settings → Secrets and variables → Actions*):
+   - aba *Secrets* → `HF_TOKEN` = o token do passo 3;
+   - aba *Variables* → `HF_SPACE` = `seu-usuario/nome-do-space`.
+5. Atualize a branch `main` (ou rode a action *Publicar no Hugging Face* manualmente em *Actions*).
+6. Abra o app pelo endereço direto `https://seu-usuario-nome-do-space.hf.space` (dentro da página do
+   Hugging Face o login não funciona, porque o navegador bloqueia o cookie no iframe).
+
+Online, o Instagram tende a desconfiar mais do acesso (IP de servidor). Se o login com senha pedir
+verificação, use a opção **Colar sessionid** da conta secundária.
+
+## Rodando no computador
 
 Requer Node.js 22.9+.
 
 ```bash
 npm install
-cp .env.example .env   # opcional: ajuste porta, modelo do Whisper etc.
+cp .env.example .env   # opcional: senha, chaves, modelo do Whisper etc.
 npm start              # http://localhost:3000
 ```
 
-Na primeira transcrição o modelo do Whisper (~250 MB no `whisper-small`) é baixado do Hugging Face e
-fica em cache. Para transcrever mais rápido em máquinas modestas, use `WHISPER_MODEL=Xenova/whisper-base`.
+O terminal mostra o endereço para abrir no celular conectado ao mesmo Wi-Fi.
 
-Se você definir `ANTHROPIC_API_KEY` no `.env`, quem não conectar a própria conta Claude usa essa chave.
-
-## Usando o Ollama (gratuito)
-
-1. Instale o [Ollama](https://ollama.com/download) no mesmo computador do app e abra o programa.
-2. Baixe um modelo. Sugestões:
-   - `ollama pull qwen2.5vl` — lê imagens e textos (recomendado; ~6 GB).
-   - `ollama pull llama3.2-vision` — também lê imagens.
-   - `ollama pull qwen2.5` ou `ollama pull llama3.1` — só textos e falas, mais leves.
-3. No app, escolha **Ollama (gratuito, local)** no topo e selecione o modelo.
-
-Modelos locais são mais lentos com muitas imagens: comece com *Máx. de imagens analisadas* entre 5 e 10.
-Se o Ollama estiver em outra máquina, defina `OLLAMA_URL` no `.env`.
-
-## Abrindo no celular
-
-O app roda no seu computador e o celular acessa pelo Wi-Fi:
-
-1. Rode `npm start` no computador. O terminal mostra um endereço como
-   `No celular (mesmo Wi-Fi): http://192.168.0.10:3000`.
-2. No celular, conectado ao **mesmo Wi-Fi**, abra esse endereço no navegador.
-3. Se não abrir, libere a porta 3000 no firewall do computador.
-
-Para acessar fora de casa, é preciso hospedar o app em um servidor (ou usar um túnel como o
-Cloudflare Tunnel) — de preferência com HTTPS, já que senha e chave da API passam pela conexão.
+Para usar o **Ollama** (só no computador): instale em [ollama.com](https://ollama.com/download), rode
+`ollama pull qwen2.5vl` e escolha *Ollama* no app.
 
 ## Estrutura
 
 | Arquivo | Função |
 |---|---|
-| `server.js` | Servidor Express: login/logout, coleções, análise e geração (streaming NDJSON) |
+| `server.js` | Servidor Express: senha, contas, chaves, coleções, análise e geração (streaming NDJSON) |
 | `src/session.js` | Sessões em memória (cookie HttpOnly) com as credenciais de cada navegador |
 | `src/instagram.js` | Cliente da API web do Instagram: login, 2FA, logout, coleções, posts, imagens e vídeos |
-| `src/transcriber.js` | Transcrição local com Whisper (transformers.js) + ffmpeg |
-| `src/analyzer.js` | Prompts e escolha do motor de IA (Claude Haiku 4.5 ou Ollama) |
-| `src/ollama.js` | Cliente da API local do Ollama (lista modelos, detecta visão, streaming) |
-| `public/` | Interface web (HTML/CSS/JS puro) |
+| `src/transcriber.js` | Transcrição com Whisper local (transformers.js + ffmpeg) ou pela Groq |
+| `src/analyzer.js` | Prompts de análise e geração |
+| `src/providers/` | Um módulo por motor de IA (Claude, Groq, Gemini, Ollama) |
+| `public/` | Interface web (HTML/CSS/JS puro, responsiva) |
+| `Dockerfile` | Imagem usada pelo Hugging Face Spaces |
 
-## Limitações e avisos
+## Limitações
 
-- O Instagram **não tem API oficial para itens salvos**. O app usa os mesmos endpoints internos do site,
-  que podem mudar sem aviso, e o acesso automatizado pode violar os Termos de Uso. Use com a sua própria
-  conta e com moderação.
-- O login com senha pode cair em uma verificação de segurança ("checkpoint"). Nesse caso, confirme no app
-  do Instagram e tente de novo, ou use a opção **Colar sessionid**.
-- Senha, cookies e chave da API ficam só na memória do servidor durante a sessão (12 h ou até clicar em
-  **Sair**). Rode o app em um ambiente confiável.
-- A transcrição roda na CPU: cada reel de 30–60 s leva alguns segundos (mais no primeiro uso). Limite a
-  quantidade em *Máx. de reels transcritos*.
+- O Instagram **não tem API oficial para itens salvos**; os endpoints internos podem mudar sem aviso e o uso
+  automatizado viola os Termos de Uso. Use uma conta secundária, com moderação.
+- Senha do Instagram, cookies e chaves ficam só na memória do servidor durante a sessão (12 h ou até **Sair**).
+- Planos gratuitos (Groq, Gemini) têm limite por minuto e por dia; coleções grandes podem estourar o limite.
+  Reduza posts e imagens se aparecer esse aviso.

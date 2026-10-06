@@ -104,7 +104,7 @@ code { font-size: 0.9em; }
 .markdown th, .markdown td { border: 1px solid var(--border); padding: 6px 10px; }
 #output-wrap { margin-top: 20px; }
 
-.accounts { display: grid; gap: 8px; flex: 0 1 420px; }
+.accounts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; flex: 0 1 420px; min-width: 0; }
 .account button { white-space: nowrap; }
 .account {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -132,7 +132,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-actions .primary { margin-top: 0; }
 
-.account select { width: auto; flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px; }
+.account select { width: auto; flex: 1; min-width: 0; max-width: 100%; padding: 6px 8px; font-size: 14px; }
 .ai-picker label { margin: 0; font-weight: 600; }
 .account-note { flex-basis: 100%; margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 
@@ -162,3 +162,12 @@ dialog::backdrop { background: rgb(0 0 0 / 0.45); }
   .dialog-actions button { flex: 1; }
   .dialog-actions .primary { width: auto; }
 }
+
+.model-row { display: flex; gap: 8px; flex-basis: 100%; min-width: 0; }
+.model-row select { flex: 1 1 0; width: 0; min-width: 0; text-overflow: ellipsis; }
+.banner { margin: 0; padding: 10px 16px; text-align: center; background: var(--warn-bg); font-size: 14px; }
+#transcriber { max-width: 480px; }
+
+.warning-list { padding-left: 20px; margin: 8px 0 4px; font-size: 14px; }
+.warning-list li { margin-bottom: 6px; }
+#warning-dialog p { font-size: 15px; }

@@ -1,24 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { streamOllama } from "./ollama.js";
-
-export const MODEL = process.env.CLAUDE_MODEL || "claude-haiku-4-5";
-
-// Cada pessoa usa a própria chave (conectada pela tela). Sem chave na sessão,
-// cai na ANTHROPIC_API_KEY do servidor, se houver.
-const serverClient = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
-
-export function clientFor(apiKey) {
-  if (apiKey) return new Anthropic({ apiKey });
-  if (serverClient) return serverClient;
-  const err = new Error("Conecte sua conta Claude (chave da API) para usar a análise.");
-  err.status = 401;
-  throw err;
-}
-
-// Confere se a chave é válida consultando o modelo usado pelo app.
-export async function validateApiKey(apiKey) {
-  await new Anthropic({ apiKey }).models.retrieve(MODEL);
-}
+import { stream } from "./providers/index.js";
 
 const ANALYSIS_SYSTEM = `Você é um estrategista sênior de conteúdo para Instagram.
 Recebe uma coleção de posts que uma pessoa salvou como referência e descobre, com precisão,
@@ -129,42 +109,10 @@ Para cada conteúdo entregue:
 Separe cada conteúdo com uma linha horizontal (---).`;
 }
 
-// Faz uma chamada em streaming e repassa o texto via callback.
-export async function streamClaude({ apiKey, system, content, onText, signal }) {
-  const stream = clientFor(apiKey).messages.stream(
-    {
-      model: MODEL,
-      max_tokens: 32000,
-      system,
-      messages: [{ role: "user", content }],
-    },
-    { signal },
-  );
-
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      onText(event.delta.text);
-    }
-  }
-
-  const message = await stream.finalMessage();
-  if (message.stop_reason === "refusal") {
-    throw new Error("O modelo recusou esta solicitação. Revise o conteúdo da coleção ou as instruções.");
-  }
-  if (message.stop_reason === "max_tokens") {
-    onText("\n\n> ⚠️ Resposta interrompida pelo limite de tamanho. Tente pedir menos conteúdos por vez.");
-  }
-  return message;
-}
-
-// `ai` escolhe o motor: { provider: "claude", apiKey } ou { provider: "ollama", model }.
-function streamAI(ai, args) {
-  if (ai?.provider === "ollama") return streamOllama({ model: ai.model, ...args });
-  return streamClaude({ apiKey: ai?.apiKey, ...args });
-}
-
+// `ai` = { session, provider, model }: escolhe o motor de IA e a chave da sessão.
 export function analyzeCollection({ ai, posts, imagesByPost, onText, signal }) {
-  return streamAI(ai, {
+  return stream({
+    ...ai,
     system: ANALYSIS_SYSTEM,
     content: buildAnalysisContent(posts, imagesByPost),
     onText,
@@ -173,12 +121,11 @@ export function analyzeCollection({ ai, posts, imagesByPost, onText, signal }) {
 }
 
 export function generateContent({ ai, analysis, posts, format, quantity, brief, onText, signal }) {
-  return streamAI(ai, {
+  return stream({
+    ...ai,
     system: GENERATION_SYSTEM,
     content: buildGenerationContent({ analysis, posts, format, quantity, brief }),
     onText,
     signal,
   });
 }
-
-export { Anthropic };

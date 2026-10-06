@@ -22,7 +22,7 @@ export function sessionMiddleware(req, res, next) {
   if (!session || session.expiresAt < now) {
     if (id) sessions.delete(id);
     id = crypto.randomBytes(24).toString("base64url");
-    session = { instagram: null, pendingInstagram: null, claudeApiKey: null };
+    session = { instagram: null, pendingInstagram: null, keys: {}, appAuthed: false };
     sessions.set(id, session);
   }
   session.expiresAt = now + TTL_MS;

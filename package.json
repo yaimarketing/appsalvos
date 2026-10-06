@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --watch --env-file-if-exists=.env server.js",
-    "check": "node --check server.js && node --check src/instagram.js && node --check src/analyzer.js && node --check src/transcriber.js && node --check src/session.js && node --check src/ollama.js && node --check public/app.js"
+    "check": "node --check server.js && for f in src/*.js src/providers/*.js scripts/*.mjs public/app.js; do node --check $f || exit 1; done"
   },
   "repository": {
     "type": "git",

@@ -1,0 +1,30 @@
+# Publica o app no Hugging Face Spaces a cada push na branch main.
+# Configuração (uma vez): em Settings → Secrets and variables → Actions do GitHub,
+#   - Secret   HF_TOKEN : token do Hugging Face com permissão "Write"
+#   - Variable HF_SPACE : nome do Space, ex.: seu-usuario/appsalvos
+name: Publicar no Hugging Face
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enviar para o Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
+            echo "::error::Configure o secret HF_TOKEN e a variable HF_SPACE (veja o README)."
+            exit 1
+          fi
+          HF_USER="${HF_SPACE%%/*}"
+          git push --force "https://${HF_USER}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" HEAD:main
