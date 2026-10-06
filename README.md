@@ -88,6 +88,12 @@ conector no Claude/ChatGPT. O conector só funciona enquanto o computador e a ja
 | `scripts/tunel.mjs` / `iniciar-windows.bat` | Rodar no computador com Cloudflare Tunnel |
 | `render.yaml` / `Dockerfile` | Publicação no Render / em serviços com Docker |
 
+## WatchParty (assistir junto)
+
+Na pasta [`watchparty/`](watchparty/README.md) há um projeto separado: extensão do Chrome + servidor para
+assistir **YouTube, Netflix, Prime Video e Max** em sincronia com amigos (host controla play/pause/seek) com
+chat. Cada um assiste na própria conta; nenhum vídeo é transmitido.
+
 ## Limitações
 
 - O Instagram **não tem API oficial para itens salvos**; os endpoints internos podem mudar sem aviso e o uso
