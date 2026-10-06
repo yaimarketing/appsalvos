@@ -11,19 +11,12 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # Senha de acesso ao app: o Render pede o valor ao criar o serviço.
+      # Senha de acesso ao site: o Render pede o valor ao criar o serviço.
       - key: APP_PASSWORD
         sync: false
-      # Chaves opcionais do servidor (deixe em branco se cada pessoa for colar a sua).
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      # O plano grátis tem 512 MB de memória: Ollama desligado e Whisper local no modelo menor.
-      # Para transcrever com qualidade, use a opção "Groq" no app.
-      - key: OLLAMA_ENABLED
-        value: "false"
+      # Chave que criptografa os links do conector (gerada automaticamente pelo Render).
+      - key: APP_SECRET
+        generateValue: true
+      # O plano grátis tem 512 MB de memória: Whisper no modelo menor.
       - key: WHISPER_MODEL
         value: Xenova/whisper-tiny

@@ -8,7 +8,6 @@ WORKDIR /home/node/app
 
 ENV NODE_ENV=production \
     PORT=7860 \
-    OLLAMA_ENABLED=false \
     WHISPER_MODEL=Xenova/whisper-base \
     WHISPER_CACHE_DIR=/home/node/app/.cache/whisper
 

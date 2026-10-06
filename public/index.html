@@ -4,141 +4,74 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AppSalvos</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E📌%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <p id="iframe-banner" class="banner" hidden>Para o login funcionar, <a id="iframe-link" href="/" target="_blank" rel="noopener">abra o app em tela cheia</a>.</p>
   <header class="top">
     <div>
       <h1>AppSalvos</h1>
-      <p>Analise uma coleção de salvos do Instagram e gere conteúdos no mesmo estilo.</p>
+      <p>Use o seu Claude ou ChatGPT para analisar suas listas de salvos do Instagram e criar conteúdos no mesmo estilo.</p>
     </div>
-    <div class="accounts">
-      <div class="account ai-picker">
-        <label for="provider" class="account-label">Motor de IA</label>
-        <select id="provider"></select>
-      </div>
-      <div class="account" id="ai-account">
-        <span class="dot"></span>
-        <span class="account-label" id="ai-label"></span>
-        <button type="button" class="secondary small" id="key-login-btn">Conectar chave</button>
-        <button type="button" class="secondary small" id="key-logout-btn" hidden>Sair</button>
-        <div class="model-row">
-          <select id="model" aria-label="Modelo"></select>
-          <button type="button" class="secondary small" id="models-refresh">Atualizar</button>
-        </div>
-        <p id="ai-note" class="account-note"></p>
-      </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2><span class="step">1</span> Conecte o Instagram (conta secundária)</h2>
       <div class="account" id="ig-account">
         <span class="dot"></span>
         <span class="account-label" id="ig-label">Instagram: desconectado</span>
         <button type="button" class="secondary small" id="ig-login-btn">Entrar no Instagram</button>
         <button type="button" class="secondary small" id="ig-logout-btn" hidden>Sair</button>
       </div>
-    </div>
-  </header>
-
-  <main>
-    <section class="card">
-      <h2><span class="step">1</span> De onde vêm os salvos</h2>
-      <div class="tabs" role="tablist">
-        <button type="button" class="tab active" data-source="instagram">Minha conta do Instagram</button>
-        <button type="button" class="tab" data-source="manual">Colar manualmente</button>
-      </div>
-
-      <div id="source-instagram" class="source-panel">
-        <p id="ig-hint" class="hint">Entre na sua conta do Instagram (botão no topo) para escolher uma lista de salvos.</p>
-        <div class="row">
-          <div class="grow">
-            <label for="collection">Lista de salvos</label>
-            <select id="collection">
-              <option value="">Entre no Instagram para ver suas listas</option>
-            </select>
-          </div>
-          <button type="button" id="load-collections" class="secondary">Atualizar listas</button>
-        </div>
-      </div>
-
-      <div id="source-manual" class="source-panel" hidden>
-        <label for="manualText">Cole os posts (link + legenda/descrição/fala), separados por uma linha <code>---</code></label>
-        <textarea id="manualText" rows="10" placeholder="https://www.instagram.com/p/XXXX/&#10;Legenda do post...&#10;---&#10;https://www.instagram.com/reel/YYYY/&#10;Fala do reel: o que é dito, texto na tela..."></textarea>
-      </div>
-
-      <div class="row options">
-        <div>
-          <label for="maxPosts">Máx. de posts</label>
-          <input id="maxPosts" type="number" min="1" max="150" value="40" />
-        </div>
-        <div>
-          <label for="maxImages">Máx. de imagens analisadas</label>
-          <input id="maxImages" type="number" min="0" max="90" value="40" />
-        </div>
-        <div>
-          <label for="maxTranscripts">Máx. de reels transcritos</label>
-          <input id="maxTranscripts" type="number" min="0" max="50" value="15" />
-        </div>
-      </div>
-      <label for="transcriber">Transcrição das falas dos reels</label>
-      <select id="transcriber">
-        <option value="local">Whisper no servidor (grátis, mais lento)</option>
-        <option value="groq">Groq (grátis, rápido — precisa da chave da Groq)</option>
-        <option value="off">Não transcrever</option>
-      </select>
-
-      <button type="button" id="analyze" class="primary">Analisar coleção</button>
+      <p class="hint">Ao clicar em <b>Sair</b>, a sessão do Instagram é encerrada e o link do conector para de funcionar.</p>
       <p id="status" class="status" aria-live="polite"></p>
-      <ul id="warnings" class="warnings"></ul>
     </section>
 
-    <section id="posts-section" class="card" hidden>
-      <h2>Posts encontrados <span id="posts-count" class="muted"></span></h2>
-      <div id="posts" class="posts"></div>
+    <section class="card" id="link-section" hidden>
+      <h2><span class="step">2</span> Seu link de conector</h2>
+      <div class="row link-row">
+        <input id="connector-url" readonly aria-label="Link do conector" />
+        <button type="button" class="secondary" id="copy-link">Copiar</button>
+      </div>
+      <p class="warn">Esse link dá acesso aos salvos da conta conectada: <b>não compartilhe</b>. Se ele vazar, clique em <b>Sair</b> e conecte de novo para gerar outro.</p>
     </section>
 
-    <section id="analysis-section" class="card" hidden>
-      <div class="section-head">
-        <h2><span class="step">2</span> Análise da coleção</h2>
-        <div class="actions">
-          <button type="button" class="secondary small" data-copy="analysis">Copiar</button>
-          <button type="button" class="secondary small" data-download="analysis">Baixar .md</button>
-        </div>
+    <section class="card">
+      <h2><span class="step">3</span> Adicione na sua IA</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-ai="claude">Claude</button>
+        <button type="button" class="tab" data-ai="chatgpt">ChatGPT</button>
       </div>
-      <article id="analysis" class="markdown"></article>
+      <div data-ai-panel="claude">
+        <ol class="steps">
+          <li>Abra o <a href="https://claude.ai/settings/connectors" target="_blank" rel="noopener">Claude → Configurações → Conectores</a> (no navegador ou no app).</li>
+          <li>Clique em <b>Adicionar conector personalizado</b>.</li>
+          <li>Nome: <b>AppSalvos</b>. URL: cole o <b>link do conector</b> (passo 2). Clique em <b>Adicionar</b>.</li>
+          <li>Numa conversa, abra o menu de ferramentas e ative o <b>AppSalvos</b>.</li>
+        </ol>
+        <p class="hint">Conectores personalizados dependem do seu plano do Claude. Em contas de empresa (Team/Enterprise), quem administra a conta pode precisar liberar.</p>
+      </div>
+      <div data-ai-panel="chatgpt" hidden>
+        <ol class="steps">
+          <li>Abra o ChatGPT → <b>Configurações → Apps e conectores → Configurações avançadas</b> e ative o <b>Modo desenvolvedor</b>.</li>
+          <li>Volte em <b>Apps e conectores</b> e clique em <b>Criar</b>.</li>
+          <li>Nome: <b>AppSalvos</b>. URL do servidor MCP: cole o <b>link do conector</b>. Autenticação: <b>Sem autenticação</b>. Marque que confia no app e clique em <b>Criar</b>.</li>
+          <li>Numa conversa nova, clique em <b>+</b> → <b>Modo desenvolvedor</b> e escolha o <b>AppSalvos</b>.</li>
+        </ol>
+        <p class="hint">O modo desenvolvedor depende do seu plano do ChatGPT (planos pagos). Os nomes dos menus podem mudar um pouco.</p>
+      </div>
     </section>
 
-    <section id="generate-section" class="card" hidden>
-      <h2><span class="step">3</span> Gerar conteúdos semelhantes</h2>
-      <div class="row options">
-        <div>
-          <label for="format">Formato</label>
-          <select id="format">
-            <option value="misto">Misto (o melhor para cada ideia)</option>
-            <option value="carrossel">Carrossel</option>
-            <option value="reel">Roteiro de reel</option>
-            <option value="estatico">Post estático</option>
-            <option value="legenda">Somente legendas</option>
-          </select>
-        </div>
-        <div>
-          <label for="quantity">Quantidade</label>
-          <input id="quantity" type="number" min="1" max="10" value="3" />
-        </div>
-      </div>
-      <label for="brief">Sobre quem vai publicar (opcional)</label>
-      <textarea id="brief" rows="3" placeholder="Nicho, marca, público, tom de voz, objetivo... Ex.: Clínica de estética em BH, público feminino 30-50, tom acolhedor, objetivo: agendamentos."></textarea>
-      <button type="button" id="generate" class="primary">Gerar conteúdos</button>
-      <p id="gen-status" class="status" aria-live="polite"></p>
-
-      <div id="output-wrap" hidden>
-        <div class="section-head">
-          <h3>Conteúdos gerados</h3>
-          <div class="actions">
-            <button type="button" class="secondary small" data-copy="output">Copiar</button>
-            <button type="button" class="secondary small" data-download="output">Baixar .md</button>
-          </div>
-        </div>
-        <article id="output" class="markdown"></article>
-      </div>
+    <section class="card">
+      <h2><span class="step">4</span> Peça na conversa</h2>
+      <p class="hint">Exemplos para copiar e colar no Claude ou no ChatGPT:</p>
+      <ul class="prompts">
+        <li><span>Use o AppSalvos e liste minhas listas de salvos.</span><button type="button" class="secondary small" data-copy-text>Copiar</button></li>
+        <li><span>Use o AppSalvos para analisar minha lista "Referências" (transcreva as falas dos principais reels) e crie 3 carrosséis no mesmo estilo para [seu nicho/marca].</span><button type="button" class="secondary small" data-copy-text>Copiar</button></li>
+        <li><span>Pelo AppSalvos, quais ganchos e formatos se repetem na minha lista "Inspiração"? Depois escreva 5 roteiros de reel com esses padrões.</span><button type="button" class="secondary small" data-copy-text>Copiar</button></li>
+      </ul>
+      <p class="hint">A análise e os textos são feitos pela sua IA, com a sua assinatura. O AppSalvos só busca os posts e transcreve as falas dos reels.</p>
     </section>
   </main>
 
@@ -169,7 +102,7 @@
         <p class="hint">No computador, entre no instagram.com → F12 → <b>Application</b> → <b>Cookies</b> → copie o valor de <code>sessionid</code>. Use esta opção se o login com senha pedir verificação.</p>
       </div>
 
-      <p class="warn"><b>Use uma conta secundária</b>, nunca a principal nem a de clientes: o Instagram pode bloquear contas usadas em acesso automatizado. A senha vai do servidor deste app direto para o Instagram e não é salva; a conexão dura até você clicar em <b>Sair</b> (ou 12 h).</p>
+      <p class="warn"><b>Use uma conta secundária</b>, nunca a principal nem a de clientes: o Instagram pode bloquear contas usadas em acesso automatizado. A senha vai do servidor deste app direto para o Instagram e não é salva. O link do conector funciona até você clicar em <b>Sair</b>.</p>
       <p id="ig-error" class="status error"></p>
       <div class="dialog-actions">
         <button type="button" class="secondary" data-close>Cancelar</button>
@@ -178,25 +111,10 @@
     </form>
   </dialog>
 
-  <dialog id="key-dialog">
-    <form method="dialog" class="dialog-body" id="key-form">
-      <h2 id="key-title">Conectar chave</h2>
-      <ol class="hint" id="key-steps"></ol>
-      <label for="key-input">Chave da API</label>
-      <input id="key-input" type="password" autocomplete="off" />
-      <p class="hint" id="key-cost"></p>
-      <p id="key-error" class="status error"></p>
-      <div class="dialog-actions">
-        <button type="button" class="secondary" data-close>Cancelar</button>
-        <button type="submit" class="primary" id="key-submit">Conectar</button>
-      </div>
-    </form>
-  </dialog>
-
   <dialog id="warning-dialog">
     <form method="dialog" class="dialog-body" id="warning-form">
       <h2>⚠️ Use uma conta secundária do Instagram</h2>
-      <p>Este app acessa o Instagram de forma <b>não oficial e automatizada</b>. O Instagram pode bloquear ou banir a conta usada, e uma punição pode chegar às contas ligadas a ela.</p>
+      <p>Este app (e o Claude ou ChatGPT, pelo conector) acessa o Instagram de forma <b>não oficial e automatizada</b>. O Instagram pode bloquear ou banir a conta usada, e uma punição pode chegar às contas ligadas a ela.</p>
       <ul class="warning-list">
         <li><b>Crie uma conta só para o app</b>, com e-mail e telefone diferentes das suas contas principais.</li>
         <li><b>Não adicione essa conta à Central de Contas</b> das suas contas principais.</li>
@@ -211,7 +129,6 @@
       </div>
     </form>
   </dialog>
-
   <dialog id="lock-dialog">
     <form method="dialog" class="dialog-body" id="lock-form">
       <h2>AppSalvos</h2>
@@ -225,7 +142,6 @@
     </form>
   </dialog>
 
-  <script src="/vendor/marked/marked.umd.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

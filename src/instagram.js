@@ -274,6 +274,36 @@ export async function fetchCollectionPosts(auth, collectionId, { limit = 50, onP
   return posts;
 }
 
+// ---------- Post avulso (pelo link) ----------
+
+const SHORTCODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+export function shortcodeFromUrl(url) {
+  const match = String(url || "").match(/instagram\.com\/(?:[\w.]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+  if (match) return match[1];
+  return /^[A-Za-z0-9_-]{5,}$/.test(String(url || "").trim()) ? String(url).trim() : null;
+}
+
+// O código do link (ex.: "C8xYz...") é o ID numérico do post em base64.
+export function shortcodeToMediaId(code) {
+  let id = 0n;
+  for (const ch of code.slice(0, 11)) {
+    const v = SHORTCODE_ALPHABET.indexOf(ch);
+    if (v < 0) throw new InstagramError("Link de post inválido.", 400);
+    id = id * 64n + BigInt(v);
+  }
+  return id.toString();
+}
+
+export async function fetchPostByUrl(auth, url) {
+  const code = shortcodeFromUrl(url);
+  if (!code) throw new InstagramError("Informe o link de um post ou reel do Instagram.", 400);
+  const data = await igGet(auth, `/media/${shortcodeToMediaId(code)}/info/`);
+  const media = data.items?.[0];
+  if (!media) throw new InstagramError("Post não encontrado.", 404);
+  return normalizeMedia(media);
+}
+
 const MEDIA_TYPES = { 1: "imagem", 2: "vídeo", 8: "carrossel" };
 
 function pickImage(versions) {

@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 
-// Sessões em memória: guardam as credenciais do Instagram e a chave da API
-// do Claude de cada navegador. Nada é gravado em disco; reiniciar o servidor
-// desconecta todo mundo.
+// Sessões do site em memória (senha liberada, login do Instagram em andamento).
+// O conector não depende delas: o link carrega os dados criptografados.
 const COOKIE = "appsalvos_sid";
 const TTL_MS = 12 * 60 * 60 * 1000;
 const sessions = new Map();
@@ -22,7 +21,7 @@ export function sessionMiddleware(req, res, next) {
   if (!session || session.expiresAt < now) {
     if (id) sessions.delete(id);
     id = crypto.randomBytes(24).toString("base64url");
-    session = { instagram: null, pendingInstagram: null, keys: {}, appAuthed: false };
+    session = { instagram: null, pendingInstagram: null, appAuthed: false };
     sessions.set(id, session);
   }
   session.expiresAt = now + TTL_MS;

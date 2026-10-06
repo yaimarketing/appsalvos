@@ -7,7 +7,6 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import ffmpegPath from "ffmpeg-static";
-import { transcribe as groqTranscribe } from "./providers/groq.js";
 
 const WHISPER_MODEL = process.env.WHISPER_MODEL || "Xenova/whisper-small";
 const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || "portuguese";
@@ -51,11 +50,6 @@ export async function decodeAudio(filePath) {
   return aligned;
 }
 
-// Extrai só o áudio em MP3 leve (bem menor que o vídeo) para enviar à Groq.
-export function extractMp3(filePath) {
-  return runFfmpeg(["-i", filePath, "-t", String(MAX_SECONDS), "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", "-f", "mp3", "pipe:1"]);
-}
-
 async function downloadToTemp(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`download do vídeo falhou (${res.status})`);
@@ -64,16 +58,9 @@ async function downloadToTemp(url) {
   return file;
 }
 
-// engine "groq": Whisper hospedado na Groq (rápido, precisa de chave gratuita).
-// engine "local": Whisper rodando neste servidor (sem chave, mais lento).
-export async function transcribeVideo(url, { engine = "local", groqKey } = {}) {
+export async function transcribeVideo(url) {
   const file = await downloadToTemp(url);
   try {
-    if (engine === "groq") {
-      const mp3 = await extractMp3(file);
-      if (mp3.length < 2000) return "";
-      return await groqTranscribe(groqKey, mp3);
-    }
     const transcriber = await getTranscriber();
     const audio = await decodeAudio(file);
     if (audio.length < 16000) return "";

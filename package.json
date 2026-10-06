@@ -1,12 +1,12 @@
 {
   "name": "appsalvos",
   "version": "0.1.0",
-  "description": "Analisa uma coleção de salvos do Instagram e gera conteúdos semelhantes com Claude",
+  "description": "Conector para o Claude e o ChatGPT analisarem listas de salvos do Instagram e criarem conteúdos",
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --watch --env-file-if-exists=.env server.js",
-    "check": "node --check server.js && for f in src/*.js src/providers/*.js scripts/*.mjs public/app.js; do node --check $f || exit 1; done"
+    "check": "for f in server.js src/*.js scripts/*.mjs public/app.js; do node --check $f || exit 1; done"
   },
   "repository": {
     "type": "git",
@@ -17,11 +17,11 @@
   },
   "homepage": "https://github.com/yaimarketing/appsalvos#readme",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
     "@huggingface/transformers": "^4.3.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^5.2.1",
     "ffmpeg-static": "^5.3.0",
-    "marked": "^18.1.0"
+    "zod": "^4.6.5"
   },
   "private": true,
   "type": "module",
