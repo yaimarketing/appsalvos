@@ -52,18 +52,26 @@ se o login com senha pedir verificação, use **Colar sessionid** da conta secun
 
 O `Dockerfile` permite publicar em qualquer serviço com Docker.
 
-## Rodando no computador (desenvolvimento)
+## Rodando no seu computador (recomendado para o Instagram)
 
-Requer Node.js 22.9+.
+Assim o acesso ao Instagram sai da sua internet de casa, de onde você já usa a conta — o Instagram
+desconfia bem menos do que de servidores na nuvem. Um túnel grátis da Cloudflare dá o endereço HTTPS
+que o Claude/ChatGPT precisam.
 
-```bash
-npm install
-cp .env.example .env   # opcional
-npm start              # http://localhost:3000
-```
+**Instalar (uma vez):**
+1. [Node.js](https://nodejs.org) — baixe a versão **LTS** e instale (Avançar, Avançar…).
+2. cloudflared — abra o **PowerShell** e rode: `winget install --id Cloudflare.cloudflared`
+   (no Mac: `brew install cloudflared`).
+3. Baixe o projeto: no GitHub, **Code → Download ZIP**, e descompacte numa pasta.
 
-Para o Claude/ChatGPT alcançarem o conector rodando no seu computador, é preciso expor a porta com um túnel
-HTTPS (ex.: Cloudflare Tunnel) — para uso normal, prefira publicar no Render.
+**Usar:**
+1. Dê dois cliques em **`iniciar-windows.bat`** (no Mac/Linux: `npm install` e depois `npm run tunel`).
+   Na primeira vez ele instala as dependências (alguns minutos).
+2. A janela mostra **o endereço** (`https://….trycloudflare.com`) e **a senha** do site. Deixe a janela aberta.
+3. Abra o endereço, conecte o Instagram e copie o link do conector para o Claude/ChatGPT.
+
+O endereço do túnel grátis muda toda vez que você inicia: conecte o Instagram de novo e atualize a URL do
+conector no Claude/ChatGPT. O conector só funciona enquanto o computador e a janela estiverem ligados.
 
 ## Estrutura
 
@@ -77,6 +85,7 @@ HTTPS (ex.: Cloudflare Tunnel) — para uso normal, prefira publicar no Render.
 | `src/transcriber.js` | Transcrição das falas com Whisper (transformers.js + ffmpeg) |
 | `src/session.js` | Sessões do site em memória (cookie HttpOnly) |
 | `public/` | Site (HTML/CSS/JS puro, responsivo) |
+| `scripts/tunel.mjs` / `iniciar-windows.bat` | Rodar no computador com Cloudflare Tunnel |
 | `render.yaml` / `Dockerfile` | Publicação no Render / em serviços com Docker |
 
 ## Limitações

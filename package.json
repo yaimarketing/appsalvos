@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --watch --env-file-if-exists=.env server.js",
-    "check": "for f in server.js src/*.js scripts/*.mjs public/app.js; do node --check $f || exit 1; done"
+    "check": "for f in server.js src/*.js scripts/*.mjs public/app.js; do node --check $f || exit 1; done",
+    "tunel": "node scripts/tunel.mjs"
   },
   "repository": {
     "type": "git",
