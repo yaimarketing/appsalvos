@@ -88,13 +88,24 @@ async function igGet(auth, path, params = {}) {
     logRefusal(path, 429);
     throw new InstagramError("O Instagram limitou as requisições. Aguarde alguns minutos.", 429);
   }
+  const body = await res.text();
   let data;
   try {
-    data = await parseJson(res);
-  } catch (err) {
-    logRefusal(path, res.status, "resposta não é JSON");
-    if (res.status === 401 || res.status === 403) throw new InstagramError(EXPIRED_MESSAGE, 401);
-    throw err;
+    data = JSON.parse(body);
+  } catch {
+    // Veio uma página HTML em vez de dados: identifica que página é, para o diagnóstico.
+    const page = /challenge|checkpoint/i.test(body)
+      ? "verificação de segurança"
+      : /accounts\/login|loginForm|"login_page"/i.test(body)
+        ? "página de login"
+        : "página desconhecida";
+    logRefusal(path, res.status, `HTML (${page})`);
+    if (page === "verificação de segurança") throw new InstagramError(CHECKPOINT_MESSAGE, 403);
+    if (res.status === 401 || res.status === 403 || page === "página de login") throw new InstagramError(EXPIRED_MESSAGE, 401);
+    throw new InstagramError(
+      `O Instagram respondeu com uma ${page} em vez de dados (código ${res.status} em ${path}).`,
+      502,
+    );
   }
   if (!res.ok || data.status === "fail") {
     logRefusal(path, res.status, data.message || data.error_type || "");
