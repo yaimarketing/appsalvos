@@ -62,6 +62,15 @@ async function parseJson(res) {
   }
 }
 
+const EXPIRED_MESSAGE = "Sessão do Instagram inválida ou expirada. Entre no instagram.com, copie o sessionid de novo e tente outra vez.";
+const CHECKPOINT_MESSAGE =
+  "O Instagram pediu uma verificação de segurança para essa conta. Abra o app do Instagram, confirme que foi você e tente de novo.";
+
+// Registra o motivo da recusa nos logs do servidor (sem cookies), para facilitar o diagnóstico.
+function logRefusal(path, status, detail) {
+  console.warn(`[instagram] ${path} → ${status}${detail ? ` (${detail})` : ""}`);
+}
+
 async function igGet(auth, path, params = {}) {
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) {
@@ -69,18 +78,34 @@ async function igGet(auth, path, params = {}) {
   }
   const res = await fetch(url, { headers: headersFor(auth), redirect: "manual" });
 
-  if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
-    throw new InstagramError("Sessão do Instagram expirada. Entre novamente.", 401);
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("location") || "";
+    logRefusal(path, res.status, `redireciona para ${location.split("?")[0] || "?"}`);
+    if (/challenge|checkpoint/i.test(location)) throw new InstagramError(CHECKPOINT_MESSAGE, 403);
+    throw new InstagramError(EXPIRED_MESSAGE, 401);
   }
   if (res.status === 429) {
+    logRefusal(path, 429);
     throw new InstagramError("O Instagram limitou as requisições. Aguarde alguns minutos.", 429);
   }
-  const data = await parseJson(res);
+  let data;
+  try {
+    data = await parseJson(res);
+  } catch (err) {
+    logRefusal(path, res.status, "resposta não é JSON");
+    if (res.status === 401 || res.status === 403) throw new InstagramError(EXPIRED_MESSAGE, 401);
+    throw err;
+  }
   if (!res.ok || data.status === "fail") {
-    if (data.message === "login_required" || data.require_login) {
-      throw new InstagramError("Sessão do Instagram expirada. Entre novamente.", 401);
+    logRefusal(path, res.status, data.message || data.error_type || "");
+    if (data.message === "checkpoint_required" || data.checkpoint_url || data.challenge) {
+      throw new InstagramError(CHECKPOINT_MESSAGE, 403);
     }
-    throw new InstagramError(`Erro do Instagram: ${data.message || res.status}`, 502);
+    if (data.message === "login_required" || data.require_login || res.status === 401) {
+      throw new InstagramError(EXPIRED_MESSAGE, 401);
+    }
+    // 403 sem "login_required" costuma ser um endereço bloqueado para o site, não sessão inválida.
+    throw new InstagramError(`O Instagram recusou a solicitação (${res.status}${data.message ? `: ${data.message}` : ""}).`, res.status === 403 ? 403 : 502);
   }
   return data;
 }
@@ -197,9 +222,26 @@ export function authFromSessionId(raw) {
   return auth;
 }
 
+// Confere a sessão e descobre o @ da conta. Tenta os endereços que o próprio
+// site do Instagram usa; só desiste se todos recusarem.
 export async function currentUsername(auth) {
-  const data = await igGet(auth, "/accounts/current_user/", { edit: "true" });
-  return data.user?.username || null;
+  const attempts = [
+    async () => (await igGet(auth, "/accounts/edit/web_form_data/")).form_data?.username,
+    async () => (await igGet(auth, "/accounts/current_user/", { edit: "true" })).user?.username,
+    async () => (auth.ds_user_id ? (await igGet(auth, `/users/${auth.ds_user_id}/info/`)).user?.username : null),
+  ];
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const username = await attempt();
+      if (username) return username;
+    } catch (err) {
+      // Sessão inválida ou verificação de segurança valem para todos os endereços: não adianta insistir.
+      if (err instanceof InstagramError && (err.status === 401 || err.message === CHECKPOINT_MESSAGE)) throw err;
+      lastError = err;
+    }
+  }
+  throw lastError || new InstagramError(EXPIRED_MESSAGE, 401);
 }
 
 // Encerra a sessão no Instagram (melhor esforço) para invalidar o cookie.
