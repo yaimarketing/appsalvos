@@ -1,0 +1,101 @@
+:root {
+  --bg: #f6f5f8;
+  --surface: #ffffff;
+  --text: #1d1b22;
+  --muted: #6b6775;
+  --border: #e3e0e8;
+  --accent: #c13584;
+  --accent-ink: #ffffff;
+  --ok: #1f7a4d;
+  --error: #b42318;
+  --warn-bg: #fff6e5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141217;
+    --surface: #1e1b22;
+    --text: #ece9f1;
+    --muted: #a19bab;
+    --border: #34303b;
+    --accent: #e0539f;
+    --ok: #4cc38a;
+    --error: #ff7b72;
+    --warn-bg: #3a2f1a;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.top { max-width: 960px; margin: 0 auto; padding: 32px 16px 8px; }
+.top h1 { margin: 0; font-size: 28px; }
+.top p { margin: 4px 0 0; color: var(--muted); }
+main { max-width: 960px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.card h2 { margin: 0 0 16px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+.step {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-size: 14px;
+}
+.muted { color: var(--muted); font-weight: normal; }
+
+label { display: block; font-weight: 600; font-size: 14px; margin: 12px 0 6px; }
+input, select, textarea {
+  width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit;
+}
+textarea { resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.row > * { flex: 1 1 180px; }
+.row .grow { flex: 3 1 260px; }
+.options > div { flex: 0 1 220px; }
+
+button { font: inherit; cursor: pointer; border-radius: 10px; padding: 10px 16px; border: 1px solid transparent; }
+button:disabled { opacity: 0.55; cursor: progress; }
+.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; margin-top: 16px; }
+.secondary { background: transparent; border-color: var(--border); color: var(--text); }
+.small { padding: 6px 10px; font-size: 13px; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+.tab { background: transparent; border-color: var(--border); color: var(--muted); }
+.tab.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+.help { margin-top: 8px; font-size: 14px; color: var(--muted); }
+.help summary { cursor: pointer; }
+.warn { background: var(--warn-bg); padding: 10px 12px; border-radius: 8px; color: var(--text); }
+code { font-size: 0.9em; }
+
+.status { min-height: 1.5em; margin: 12px 0 0; color: var(--muted); }
+.status.ok { color: var(--ok); }
+.status.error { color: var(--error); }
+
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.section-head h2, .section-head h3 { margin: 0 0 12px; }
+.actions { display: flex; gap: 6px; }
+
+.posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.post {
+  display: block; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  color: inherit; text-decoration: none; font-size: 13px; background: var(--bg);
+}
+.post img, .post .noimg { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; display: block; }
+.post .noimg { display: grid; place-items: center; color: var(--muted); background: var(--border); }
+.post-meta { padding: 6px 8px 0; color: var(--muted); }
+.post p { margin: 4px 8px 8px; overflow-wrap: anywhere; }
+
+.markdown { overflow-wrap: anywhere; }
+.markdown h2 { font-size: 18px; margin: 24px 0 8px; }
+.markdown h3 { font-size: 16px; margin: 18px 0 6px; }
+.markdown hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+.markdown blockquote { margin: 0; padding: 4px 12px; border-left: 3px solid var(--accent); color: var(--muted); }
+.markdown pre { overflow-x: auto; background: var(--bg); padding: 12px; border-radius: 8px; }
+.markdown table { border-collapse: collapse; display: block; overflow-x: auto; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 6px 10px; }
+#output-wrap { margin-top: 20px; }

@@ -1,0 +1,29 @@
+{
+  "name": "appsalvos",
+  "version": "0.1.0",
+  "description": "Analisa uma coleção de salvos do Instagram e gera conteúdos semelhantes com Claude",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "check": "node --check server.js && node --check src/instagram.js && node --check src/analyzer.js && node --check public/app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yaimarketing/appsalvos.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yaimarketing/appsalvos/issues"
+  },
+  "homepage": "https://github.com/yaimarketing/appsalvos#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "express": "^5.2.1",
+    "marked": "^18.1.0"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  }
+}

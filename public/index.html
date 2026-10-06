@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AppSalvos</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>AppSalvos</h1>
+    <p>Analise uma coleção de salvos do Instagram e gere conteúdos no mesmo estilo.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2><span class="step">1</span> De onde vêm os salvos</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-source="instagram">Conectar Instagram</button>
+        <button type="button" class="tab" data-source="manual">Colar manualmente</button>
+      </div>
+
+      <div id="source-instagram" class="source-panel">
+        <label for="sessionId">Cookie <code>sessionid</code> do Instagram</label>
+        <input id="sessionId" type="password" autocomplete="off" placeholder="Cole aqui o valor do cookie sessionid" />
+        <details class="help">
+          <summary>Como pegar o sessionid?</summary>
+          <ol>
+            <li>Entre no <a href="https://www.instagram.com" target="_blank" rel="noopener">instagram.com</a> pelo computador, na conta que tem os salvos.</li>
+            <li>Abra as ferramentas do desenvolvedor (F12) → aba <b>Application</b> (Chrome) ou <b>Armazenamento</b> (Firefox) → <b>Cookies</b> → <code>https://www.instagram.com</code>.</li>
+            <li>Copie o valor do cookie <code>sessionid</code> e cole acima.</li>
+          </ol>
+          <p class="warn">O sessionid dá acesso à conta: use apenas a sua, não compartilhe e saia da sessão no Instagram para invalidá-lo depois. O app não salva esse valor. O acesso automatizado pode violar os Termos de Uso do Instagram — use com moderação.</p>
+        </details>
+
+        <div class="row">
+          <div class="grow">
+            <label for="collection">Nome da lista de salvos</label>
+            <input id="collection" list="collection-list" placeholder="Ex.: Referências carrossel" />
+            <datalist id="collection-list"></datalist>
+          </div>
+          <button type="button" id="load-collections" class="secondary">Listar minhas coleções</button>
+        </div>
+      </div>
+
+      <div id="source-manual" class="source-panel" hidden>
+        <label for="manualText">Cole os posts (link + legenda/descrição), separados por uma linha <code>---</code></label>
+        <textarea id="manualText" rows="10" placeholder="https://www.instagram.com/p/XXXX/&#10;Legenda do post...&#10;---&#10;https://www.instagram.com/reel/YYYY/&#10;Descrição do reel: o que é falado, texto na tela..."></textarea>
+      </div>
+
+      <div class="row options">
+        <div>
+          <label for="maxPosts">Máx. de posts</label>
+          <input id="maxPosts" type="number" min="1" max="150" value="40" />
+        </div>
+        <div>
+          <label for="maxImages">Máx. de imagens analisadas</label>
+          <input id="maxImages" type="number" min="0" max="90" value="40" />
+        </div>
+      </div>
+
+      <button type="button" id="analyze" class="primary">Analisar coleção</button>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section id="posts-section" class="card" hidden>
+      <h2>Posts encontrados <span id="posts-count" class="muted"></span></h2>
+      <div id="posts" class="posts"></div>
+    </section>
+
+    <section id="analysis-section" class="card" hidden>
+      <div class="section-head">
+        <h2><span class="step">2</span> Análise da coleção</h2>
+        <div class="actions">
+          <button type="button" class="secondary small" data-copy="analysis">Copiar</button>
+          <button type="button" class="secondary small" data-download="analysis">Baixar .md</button>
+        </div>
+      </div>
+      <article id="analysis" class="markdown"></article>
+    </section>
+
+    <section id="generate-section" class="card" hidden>
+      <h2><span class="step">3</span> Gerar conteúdos semelhantes</h2>
+      <div class="row options">
+        <div>
+          <label for="format">Formato</label>
+          <select id="format">
+            <option value="misto">Misto (o melhor para cada ideia)</option>
+            <option value="carrossel">Carrossel</option>
+            <option value="reel">Roteiro de reel</option>
+            <option value="estatico">Post estático</option>
+            <option value="legenda">Somente legendas</option>
+          </select>
+        </div>
+        <div>
+          <label for="quantity">Quantidade</label>
+          <input id="quantity" type="number" min="1" max="10" value="3" />
+        </div>
+      </div>
+      <label for="brief">Sobre quem vai publicar (opcional)</label>
+      <textarea id="brief" rows="3" placeholder="Nicho, marca, público, tom de voz, objetivo... Ex.: Clínica de estética em BH, público feminino 30-50, tom acolhedor, objetivo: agendamentos."></textarea>
+      <button type="button" id="generate" class="primary">Gerar conteúdos</button>
+      <p id="gen-status" class="status" aria-live="polite"></p>
+
+      <div id="output-wrap" hidden>
+        <div class="section-head">
+          <h3>Conteúdos gerados</h3>
+          <div class="actions">
+            <button type="button" class="secondary small" data-copy="output">Copiar</button>
+            <button type="button" class="secondary small" data-download="output">Baixar .md</button>
+          </div>
+        </div>
+        <article id="output" class="markdown"></article>
+      </div>
+    </section>
+  </main>
+
+  <script src="/vendor/marked/marked.umd.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
