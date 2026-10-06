@@ -95,8 +95,11 @@ function sendError(res, err) {
   res.status(err.status && err.status < 600 ? err.status : 500).json({ error: err.message || "Erro inesperado." });
 }
 
+// PUBLIC_URL vem do script do túnel (npm run tunel): garante o endereço público
+// no link mesmo que o site seja aberto por http://localhost.
 function connectorUrl(req, token) {
-  return `${req.protocol}://${req.get("host")}/mcp/${token}`;
+  const base = process.env.PUBLIC_URL?.replace(/\/$/, "") || `${req.protocol}://${req.get("host")}`;
+  return `${base}/mcp/${token}`;
 }
 
 function sessionInfo(req) {
@@ -172,7 +175,7 @@ app.listen(port, () => {
   console.log(`AppSalvos rodando em http://localhost:${port}`);
   if (PASSWORD_MISSING_ONLINE) console.log("APP_PASSWORD não definida: o site fica bloqueado até você configurar a senha.");
   else if (!APP_PASSWORD) console.log("Sem APP_PASSWORD: o site abre sem senha (ok para uso local; defina antes de colocar online).");
-  if (IS_ONLINE) return;
+  if (IS_ONLINE || process.env.PUBLIC_URL) return;
   console.log("Atenção: Claude e ChatGPT só acessam o conector por um endereço público (https). Para uso real, publique o app (ex.: Render).");
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const a of addrs || []) {
