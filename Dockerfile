@@ -1,4 +1,5 @@
-# Imagem para o Hugging Face Spaces (Docker). Também roda em qualquer serviço com Docker.
+# Imagem Docker do app (opcional: o Render usa o render.yaml sem Docker).
+# Serve para qualquer serviço com Docker, inclusive o Hugging Face Spaces (plano pago).
 FROM node:22-slim
 
 # O Hugging Face executa o container com o usuário de id 1000 (o usuário "node" da imagem).

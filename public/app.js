@@ -292,7 +292,7 @@ function renderSession(info) {
   $("#ig-hint").hidden = ig.connected;
 
   renderProviders();
-  if (info.app.passwordMissing) setStatus($("#status"), "Falta configurar o secret APP_PASSWORD no Space do Hugging Face.", "error");
+  if (info.app.passwordMissing) setStatus($("#status"), "Falta configurar a variável APP_PASSWORD no serviço de hospedagem (ex.: Render → Environment).", "error");
   else if (info.app.locked) openLock();
 
   if (ig.connected && !igWasConnected) loadCollections();
@@ -489,7 +489,12 @@ function renderProviders() {
   const groqOpt = $("#transcriber").querySelector('option[value="groq"]');
   groqOpt.disabled = !state.session.transcription.groqAvailable;
   if (groqOpt.disabled && $("#transcriber").value === "groq") $("#transcriber").value = "local";
+  // Com a Groq disponível, ela vira o padrão (mais rápida e precisa), a menos que a pessoa já tenha escolhido.
+  if (!groqOpt.disabled && !transcriberTouched) $("#transcriber").value = "groq";
 }
+
+let transcriberTouched = false;
+$("#transcriber").addEventListener("change", () => (transcriberTouched = true));
 
 let modelsFor = null;
 

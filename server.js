@@ -16,8 +16,10 @@ import { OLLAMA_URL } from "./src/providers/ollama.js";
 // Senha de acesso ao app. Obrigatória quando o app está online (ex.: Hugging Face);
 // sem ela qualquer pessoa com o link usaria o app (e as chaves do servidor).
 const APP_PASSWORD = process.env.APP_PASSWORD || "";
-// No Hugging Face (variável SPACE_ID) o app fica público: sem senha, não libera nada.
-const PASSWORD_MISSING_ONLINE = Boolean(process.env.SPACE_ID) && !APP_PASSWORD;
+// Online (Render define RENDER=true; Hugging Face define SPACE_ID) o app fica público:
+// sem senha configurada, não libera nada.
+const IS_ONLINE = Boolean(process.env.RENDER || process.env.SPACE_ID || process.env.REQUIRE_APP_PASSWORD);
+const PASSWORD_MISSING_ONLINE = IS_ONLINE && !APP_PASSWORD;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -38,7 +40,7 @@ function safeEqual(a, b) {
 
 app.use("/api", (req, res, next) => {
   if (!PASSWORD_MISSING_ONLINE || req.path === "/session") return next();
-  res.status(503).json({ error: "Configure o secret APP_PASSWORD no Space do Hugging Face para usar o app." });
+  res.status(503).json({ error: "Configure a variável APP_PASSWORD no serviço de hospedagem para usar o app." });
 });
 
 app.post("/api/app-login", async (req, res) => {
@@ -346,9 +348,10 @@ app.post("/api/generate", async (req, res) => {
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
   console.log(`AppSalvos rodando em http://localhost:${port} (Claude: ${CLAUDE_MODEL}, Ollama: ${OLLAMA_URL})`);
-  if (!APP_PASSWORD) console.log("Sem APP_PASSWORD: o app abre sem senha (ok para uso local; defina antes de colocar online).");
+  if (PASSWORD_MISSING_ONLINE) console.log("APP_PASSWORD não definida: o app fica bloqueado até você configurar a senha.");
+  else if (!APP_PASSWORD) console.log("Sem APP_PASSWORD: o app abre sem senha (ok para uso local; defina antes de colocar online).");
   // Endereços na rede local, para abrir pelo celular conectado ao mesmo Wi-Fi.
-  if (process.env.SPACE_ID) return;
+  if (IS_ONLINE) return;
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const a of addrs || []) {
       if (a.family === "IPv4" && !a.internal) console.log(`No celular (mesmo Wi-Fi): http://${a.address}:${port}`);

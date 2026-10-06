@@ -1,13 +1,3 @@
----
-title: AppSalvos
-emoji: 📌
-colorFrom: pink
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # AppSalvos
 
 App web que entra numa conta do Instagram, abre a **lista de salvos (coleção)** escolhida, analisa todos
@@ -42,26 +32,27 @@ No plano gratuito do Gemini o Google pode usar os dados enviados para melhorar o
    CTAs e *fórmulas replicáveis*.
 6. **Geração:** escolha formato, quantidade e descreva quem vai publicar.
 
-## Publicar online (Hugging Face Spaces, grátis)
+## Publicar online (Render, grátis)
 
-O repositório já vem pronto: `Dockerfile` para o Space e `.github/workflows/deploy-huggingface.yml`, que
-publica automaticamente a cada atualização da branch `main`.
+O repositório já tem o `render.yaml`, que configura tudo no [Render](https://render.com) (plano grátis, sem
+cartão). O Render publica de novo sozinho a cada atualização da branch escolhida.
 
-1. **Hugging Face:** crie uma conta em [huggingface.co](https://huggingface.co/join) e um Space em
-   *New Space* → SDK **Docker** → template **Blank** → hardware **CPU basic (free)**.
-2. **Secrets do Space** (*Settings → Variables and secrets → New secret*):
+1. Crie uma conta em [render.com](https://render.com) clicando em **GitHub** para entrar.
+2. Clique em **New → Blueprint**, autorize o Render a ver o repositório `appsalvos` e selecione-o
+   (branch `main`).
+3. O Render pede os valores das variáveis:
    - `APP_PASSWORD` — senha de acesso ao app (**obrigatória**; sem ela o app não libera nada online).
-   - Opcionais: `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` — evitam colar a chave a cada acesso.
-3. **Token:** em [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens), crie um token do tipo **Write**.
-4. **GitHub** (*Settings → Secrets and variables → Actions*):
-   - aba *Secrets* → `HF_TOKEN` = o token do passo 3;
-   - aba *Variables* → `HF_SPACE` = `seu-usuario/nome-do-space`.
-5. Atualize a branch `main` (ou rode a action *Publicar no Hugging Face* manualmente em *Actions*).
-6. Abra o app pelo endereço direto `https://seu-usuario-nome-do-space.hf.space` (dentro da página do
-   Hugging Face o login não funciona, porque o navegador bloqueia o cookie no iframe).
+   - `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` — opcionais; preenchidas, ninguém precisa colar
+     a chave a cada acesso. Pode deixar em branco.
+4. Clique em **Deploy Blueprint** e espere o status **Live** (alguns minutos).
+5. Abra o endereço mostrado (ex.: `https://appsalvos.onrender.com`) no computador ou no celular.
 
-Online, o Instagram tende a desconfiar mais do acesso (IP de servidor). Se o login com senha pedir
-verificação, use a opção **Colar sessionid** da conta secundária.
+Limitações do plano grátis: o app "dorme" após 15 min sem uso e leva ~1 min para acordar; ao dormir, os
+logins (Instagram e chaves coladas) são perdidos. Com 512 MB de memória, o Whisper local usa o modelo
+menor — prefira a transcrição pela **Groq**. O Instagram tende a desconfiar mais de acessos vindos de
+servidores; se o login com senha pedir verificação, use **Colar sessionid** da conta secundária.
+
+O `Dockerfile` também permite publicar em qualquer serviço com Docker (ex.: Hugging Face Spaces, hoje pago).
 
 ## Rodando no computador
 
@@ -89,7 +80,8 @@ Para usar o **Ollama** (só no computador): instale em [ollama.com](https://olla
 | `src/analyzer.js` | Prompts de análise e geração |
 | `src/providers/` | Um módulo por motor de IA (Claude, Groq, Gemini, Ollama) |
 | `public/` | Interface web (HTML/CSS/JS puro, responsiva) |
-| `Dockerfile` | Imagem usada pelo Hugging Face Spaces |
+| `render.yaml` | Configuração do Render (deploy grátis) |
+| `Dockerfile` | Imagem Docker opcional para outros serviços |
 
 ## Limitações
 
