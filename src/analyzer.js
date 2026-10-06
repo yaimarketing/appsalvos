@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { streamOllama } from "./ollama.js";
 
 export const MODEL = process.env.CLAUDE_MODEL || "claude-haiku-4-5";
 
@@ -156,9 +157,14 @@ export async function streamClaude({ apiKey, system, content, onText, signal }) 
   return message;
 }
 
-export function analyzeCollection({ apiKey, posts, imagesByPost, onText, signal }) {
-  return streamClaude({
-    apiKey,
+// `ai` escolhe o motor: { provider: "claude", apiKey } ou { provider: "ollama", model }.
+function streamAI(ai, args) {
+  if (ai?.provider === "ollama") return streamOllama({ model: ai.model, ...args });
+  return streamClaude({ apiKey: ai?.apiKey, ...args });
+}
+
+export function analyzeCollection({ ai, posts, imagesByPost, onText, signal }) {
+  return streamAI(ai, {
     system: ANALYSIS_SYSTEM,
     content: buildAnalysisContent(posts, imagesByPost),
     onText,
@@ -166,9 +172,8 @@ export function analyzeCollection({ apiKey, posts, imagesByPost, onText, signal 
   });
 }
 
-export function generateContent({ apiKey, analysis, posts, format, quantity, brief, onText, signal }) {
-  return streamClaude({
-    apiKey,
+export function generateContent({ ai, analysis, posts, format, quantity, brief, onText, signal }) {
+  return streamAI(ai, {
     system: GENERATION_SYSTEM,
     content: buildGenerationContent({ analysis, posts, format, quantity, brief }),
     onText,

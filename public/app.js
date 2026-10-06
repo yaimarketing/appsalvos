@@ -123,16 +123,13 @@ $("#analyze").addEventListener("click", async () => {
   };
   if (state.source === "instagram") {
     if (!state.session?.instagram.connected) return openInstagramDialog();
-    if (!body.collection.trim()) {
+    if (!body.collection) {
       setStatus(status, "Escolha a lista de salvos.", "error");
       return;
     }
   }
-  const claude = state.session?.claude;
-  if (claude && !claude.connected && !claude.serverKey) {
-    $("#claude-login-btn").click();
-    return;
-  }
+  if (!aiReady(status)) return;
+  Object.assign(body, aiParams());
   $("#warnings").innerHTML = "";
 
   setBusy(true);
@@ -187,6 +184,7 @@ $("#analyze").addEventListener("click", async () => {
 
 $("#generate").addEventListener("click", async () => {
   const status = $("#gen-status");
+  if (!aiReady(status)) return;
   setBusy(true);
   state.output = "";
   $("#output").innerHTML = "";
@@ -204,6 +202,7 @@ $("#generate").addEventListener("click", async () => {
         format: $("#format").value,
         quantity: $("#quantity").value,
         brief: $("#brief").value,
+        ...aiParams(),
       },
       (ev) => {
         if (ev.type === "delta") {
@@ -226,9 +225,30 @@ $("#generate").addEventListener("click", async () => {
   }
 });
 
+// navigator.clipboard só existe em HTTPS/localhost; pelo IP da rede local
+// (ex.: abrindo no celular) usamos o método antigo de cópia.
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      return await navigator.clipboard.writeText(text);
+    } catch {
+      // sem permissão: tenta o método antigo abaixo
+    }
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
 document.querySelectorAll("[data-copy]").forEach((btn) => {
   btn.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(state[btn.dataset.copy] || "");
+    await copyText(state[btn.dataset.copy] || "");
     const label = btn.textContent;
     btn.textContent = "Copiado!";
     setTimeout(() => (btn.textContent = label), 1500);
@@ -282,7 +302,18 @@ function renderSession(info) {
   $("#claude-logout-btn").hidden = !cl.connected;
 
   if (ig.connected && !igWasConnected) loadCollections();
-  if (!ig.connected) $("#collection-list").innerHTML = "";
+  if (!ig.connected) setCollectionOptions([], "Entre no Instagram para ver suas listas");
+}
+
+function setCollectionOptions(collections, placeholder) {
+  const select = $("#collection");
+  const previous = select.value;
+  select.innerHTML = "";
+  if (placeholder) select.add(new Option(placeholder, ""));
+  for (const c of collections) {
+    select.add(new Option(c.count != null ? `${c.name} (${c.count})` : c.name, c.id));
+  }
+  if ([...select.options].some((o) => o.value === previous)) select.value = previous;
 }
 
 async function refreshSession() {
@@ -298,15 +329,8 @@ async function loadCollections() {
   setStatus(status, "Buscando suas coleções…");
   try {
     const data = await api("/api/collections");
-    const list = $("#collection-list");
-    list.innerHTML = "";
-    for (const c of data.collections) {
-      const opt = document.createElement("option");
-      opt.value = c.name;
-      opt.label = c.count != null ? `${c.name} (${c.count})` : c.name;
-      list.appendChild(opt);
-    }
-    setStatus(status, `${data.collections.length} coleções: ${data.collections.map((c) => c.name).join(", ")}`, "ok");
+    setCollectionOptions(data.collections, "Escolha uma lista…");
+    setStatus(status, `${data.collections.length} listas encontradas. Escolha uma acima.`, "ok");
   } catch (err) {
     setStatus(status, err.message, "error");
     refreshSession();
@@ -418,3 +442,77 @@ $("#claude-logout-btn").addEventListener("click", async () => {
 });
 
 refreshSession();
+
+// ---------- Motor de IA: Claude ou Ollama ----------
+
+const prefs = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // sem armazenamento local (aba anônima etc.)
+    }
+  },
+};
+
+function aiParams() {
+  return { provider: $("#provider").value, ollamaModel: $("#ollama-model").value };
+}
+
+function aiReady(statusEl) {
+  if ($("#provider").value === "ollama") {
+    if (!$("#ollama-model").value) {
+      setStatus(statusEl, "Nenhum modelo do Ollama disponível. Veja o aviso no topo da tela.", "error");
+      return false;
+    }
+    return true;
+  }
+  const claude = state.session?.claude;
+  if (claude && !claude.connected && !claude.serverKey) {
+    $("#claude-login-btn").click();
+    return false;
+  }
+  return true;
+}
+
+async function loadOllamaModels() {
+  const select = $("#ollama-model");
+  const note = $("#ollama-status");
+  note.textContent = "Procurando modelos…";
+  try {
+    const data = await api("/api/ollama/models");
+    select.innerHTML = "";
+    for (const m of data.models) select.add(new Option(`${m.name}${m.vision ? " · lê imagens" : ""}`, m.name));
+    const saved = prefs.get("ollamaModel");
+    if (saved && data.models.some((m) => m.name === saved)) select.value = saved;
+    $("#ollama-account").classList.toggle("on", data.models.length > 0);
+    note.textContent = data.models.length
+      ? "Roda no computador do servidor. Modelos que não leem imagens analisam só textos e falas."
+      : 'Nenhum modelo instalado. No computador do servidor rode: ollama pull qwen2.5vl';
+  } catch (err) {
+    select.innerHTML = "";
+    $("#ollama-account").classList.remove("on");
+    note.textContent = err.message;
+  }
+}
+
+function applyProvider() {
+  const ollama = $("#provider").value === "ollama";
+  $("#ollama-account").hidden = !ollama;
+  $("#claude-account").hidden = ollama;
+  prefs.set("provider", $("#provider").value);
+  if (ollama && !$("#ollama-model").options.length) loadOllamaModels();
+}
+
+$("#provider").addEventListener("change", applyProvider);
+$("#ollama-model").addEventListener("change", () => prefs.set("ollamaModel", $("#ollama-model").value));
+$("#ollama-refresh").addEventListener("click", loadOllamaModels);
+if (prefs.get("provider") === "ollama") $("#provider").value = "ollama";
+applyProvider();

@@ -1,13 +1,24 @@
 # AppSalvos
 
 App web que entra na sua conta do Instagram, abre a **lista de salvos (coleção)** que você escolher,
-analisa todos os posts dessa lista (legendas, métricas, imagens/capas e **as falas dos reels**) com o
-Claude Haiku 4.5 e **gera conteúdos novos no mesmo estilo**: carrosséis, roteiros de reel, posts
-estáticos ou legendas.
+analisa todos os posts dessa lista (legendas, métricas, imagens/capas e **as falas dos reels**) com IA
+e **gera conteúdos novos no mesmo estilo**: carrosséis, roteiros de reel, posts estáticos ou legendas.
+
+Você escolhe o motor de IA na tela:
+
+| | Claude (pago) | Ollama (gratuito) |
+|---|---|---|
+| Onde roda | API da Anthropic (Claude Haiku 4.5) | No computador onde o app está rodando |
+| Custo | Cobrado na sua conta da Anthropic | Zero |
+| Qualidade em português | Alta | Boa a razoável, depende do modelo |
+| Requisitos | Chave da API | 8–16 GB de RAM (placa de vídeo ajuda) |
+
+Funciona no computador e no celular.
 
 ## Como funciona
 
-1. **Contas** (barra no topo da tela)
+1. **Contas e motor de IA** (barra no topo da tela)
+   - **Motor de IA:** escolha *Claude (pago)* ou *Ollama (gratuito, local)* e, no Ollama, o modelo instalado.
    - **Entrar no Instagram:** com usuário e senha (inclui o código de verificação em duas etapas) ou
      colando o cookie `sessionid`. **Sair** encerra a sessão no Instagram e no app.
    - **Entrar com sua conta Claude:** cole uma chave da API criada no
@@ -36,6 +47,30 @@ fica em cache. Para transcrever mais rápido em máquinas modestas, use `WHISPER
 
 Se você definir `ANTHROPIC_API_KEY` no `.env`, quem não conectar a própria conta Claude usa essa chave.
 
+## Usando o Ollama (gratuito)
+
+1. Instale o [Ollama](https://ollama.com/download) no mesmo computador do app e abra o programa.
+2. Baixe um modelo. Sugestões:
+   - `ollama pull qwen2.5vl` — lê imagens e textos (recomendado; ~6 GB).
+   - `ollama pull llama3.2-vision` — também lê imagens.
+   - `ollama pull qwen2.5` ou `ollama pull llama3.1` — só textos e falas, mais leves.
+3. No app, escolha **Ollama (gratuito, local)** no topo e selecione o modelo.
+
+Modelos locais são mais lentos com muitas imagens: comece com *Máx. de imagens analisadas* entre 5 e 10.
+Se o Ollama estiver em outra máquina, defina `OLLAMA_URL` no `.env`.
+
+## Abrindo no celular
+
+O app roda no seu computador e o celular acessa pelo Wi-Fi:
+
+1. Rode `npm start` no computador. O terminal mostra um endereço como
+   `No celular (mesmo Wi-Fi): http://192.168.0.10:3000`.
+2. No celular, conectado ao **mesmo Wi-Fi**, abra esse endereço no navegador.
+3. Se não abrir, libere a porta 3000 no firewall do computador.
+
+Para acessar fora de casa, é preciso hospedar o app em um servidor (ou usar um túnel como o
+Cloudflare Tunnel) — de preferência com HTTPS, já que senha e chave da API passam pela conexão.
+
 ## Estrutura
 
 | Arquivo | Função |
@@ -44,7 +79,8 @@ Se você definir `ANTHROPIC_API_KEY` no `.env`, quem não conectar a própria co
 | `src/session.js` | Sessões em memória (cookie HttpOnly) com as credenciais de cada navegador |
 | `src/instagram.js` | Cliente da API web do Instagram: login, 2FA, logout, coleções, posts, imagens e vídeos |
 | `src/transcriber.js` | Transcrição local com Whisper (transformers.js) + ffmpeg |
-| `src/analyzer.js` | Prompts e chamadas ao Claude Haiku 4.5 |
+| `src/analyzer.js` | Prompts e escolha do motor de IA (Claude Haiku 4.5 ou Ollama) |
+| `src/ollama.js` | Cliente da API local do Ollama (lista modelos, detecta visão, streaming) |
 | `public/` | Interface web (HTML/CSS/JS puro) |
 
 ## Limitações e avisos

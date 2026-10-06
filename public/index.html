@@ -13,6 +13,19 @@
       <p>Analise uma coleção de salvos do Instagram e gere conteúdos no mesmo estilo.</p>
     </div>
     <div class="accounts">
+      <div class="account ai-picker">
+        <label for="provider" class="account-label">Motor de IA</label>
+        <select id="provider">
+          <option value="claude">Claude (pago)</option>
+          <option value="ollama">Ollama (gratuito, local)</option>
+        </select>
+      </div>
+      <div class="account" id="ollama-account" hidden>
+        <span class="dot"></span>
+        <select id="ollama-model" aria-label="Modelo do Ollama"></select>
+        <button type="button" class="secondary small" id="ollama-refresh">Atualizar</button>
+        <p id="ollama-status" class="account-note"></p>
+      </div>
       <div class="account" id="ig-account">
         <span class="dot"></span>
         <span class="account-label" id="ig-label">Instagram: desconectado</span>
@@ -41,10 +54,11 @@
         <div class="row">
           <div class="grow">
             <label for="collection">Lista de salvos</label>
-            <input id="collection" list="collection-list" placeholder="Ex.: Referências carrossel" />
-            <datalist id="collection-list"></datalist>
+            <select id="collection">
+              <option value="">Entre no Instagram para ver suas listas</option>
+            </select>
           </div>
-          <button type="button" id="load-collections" class="secondary">Atualizar coleções</button>
+          <button type="button" id="load-collections" class="secondary">Atualizar listas</button>
         </div>
       </div>
 

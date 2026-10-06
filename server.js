@@ -1,4 +1,5 @@
 import express from "express";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as instagram from "./src/instagram.js";
@@ -6,6 +7,7 @@ import { InstagramError } from "./src/instagram.js";
 import { Anthropic, MODEL, clientFor, analyzeCollection, generateContent, validateApiKey } from "./src/analyzer.js";
 import { transcribeVideo, WHISPER_MODEL } from "./src/transcriber.js";
 import { sessionMiddleware } from "./src/session.js";
+import { OllamaError, OLLAMA_URL, listModels as listOllamaModels, ensureModel as ensureOllamaModel } from "./src/ollama.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -21,7 +23,7 @@ const clamp = (n, min, max, fallback) => {
 };
 
 function errorMessage(err) {
-  if (err instanceof InstagramError) return err.message;
+  if (err instanceof InstagramError || err instanceof OllamaError) return err.message;
   if (err instanceof Anthropic.AuthenticationError) return "Chave da API do Claude inválida. Conecte sua conta novamente.";
   if (err instanceof Anthropic.PermissionDeniedError) return "Essa chave da API não tem permissão para usar o modelo.";
   if (err instanceof Anthropic.RateLimitError) return "Limite da API do Claude atingido. Tente novamente em instantes.";
@@ -53,6 +55,17 @@ function sessionInfo(session) {
     },
     model: MODEL,
   };
+}
+
+// Define qual IA atende a requisição e confere se ela está pronta para uso.
+async function resolveAI(req, body) {
+  if (body.provider === "ollama") {
+    const model = String(body.ollamaModel || "");
+    await ensureOllamaModel(model);
+    return { provider: "ollama", model };
+  }
+  clientFor(req.session.claudeApiKey); // falha cedo se não houver conta Claude conectada
+  return { provider: "claude", apiKey: req.session.claudeApiKey };
 }
 
 // Respostas em NDJSON: um objeto JSON por linha, lido pelo navegador em streaming.
@@ -157,6 +170,14 @@ app.post("/api/claude/logout", (req, res) => {
   res.json(sessionInfo(req.session));
 });
 
+app.get("/api/ollama/models", async (_req, res) => {
+  try {
+    res.json({ url: OLLAMA_URL, models: await listOllamaModels() });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // ---------- Coleções, análise e geração ----------
 
 app.get("/api/collections", async (req, res) => {
@@ -175,7 +196,7 @@ app.post("/api/analyze", async (req, res) => {
     const maxPosts = clamp(body.maxPosts, 1, 150, 40);
     const maxImages = clamp(body.maxImages, 0, 90, 40);
     const maxTranscripts = body.transcribe ? clamp(body.maxTranscripts, 0, 50, 15) : 0;
-    clientFor(req.session.claudeApiKey); // falha cedo se não houver conta Claude conectada
+    const ai = await resolveAI(req, body);
     let posts;
 
     if (body.source === "manual") {
@@ -237,11 +258,12 @@ app.post("/api/analyze", async (req, res) => {
       type: "posts",
       posts: posts.map(({ images, videoUrl, ...p }) => ({ ...p, thumbnail: images[0] || null })),
     });
-    out.send({ type: "progress", message: `Analisando ${posts.length} posts com o Claude…` });
+    const aiName = ai.provider === "ollama" ? `o Ollama (${ai.model})` : "o Claude";
+    out.send({ type: "progress", message: `Analisando ${posts.length} posts com ${aiName}…` });
 
     let analysis = "";
     await analyzeCollection({
-      apiKey: req.session.claudeApiKey,
+      ai,
       posts,
       imagesByPost,
       signal: out.signal,
@@ -271,9 +293,10 @@ app.post("/api/generate", async (req, res) => {
           transcript: p.transcript ? String(p.transcript) : null,
         }))
       : [];
+    const ai = await resolveAI(req, body);
     let text = "";
     await generateContent({
-      apiKey: req.session.claudeApiKey,
+      ai,
       analysis: String(body.analysis),
       posts,
       format: body.format,
@@ -295,5 +318,11 @@ app.post("/api/generate", async (req, res) => {
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
-  console.log(`AppSalvos rodando em http://localhost:${port} (modelo: ${MODEL})`);
+  console.log(`AppSalvos rodando em http://localhost:${port} (Claude: ${MODEL}, Ollama: ${OLLAMA_URL})`);
+  // Endereços na rede local, para abrir pelo celular conectado ao mesmo Wi-Fi.
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.family === "IPv4" && !a.internal) console.log(`No celular (mesmo Wi-Fi): http://${a.address}:${port}`);
+    }
+  }
 });
